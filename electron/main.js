@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron')
 const { findFreePort } = require('./port')
 const { createTray } = require('./tray')
+const { setupAutoUpdater } = require('./updater')
 const { spawn } = require('child_process')
 const path = require('path')
 const http = require('http')
@@ -77,6 +78,7 @@ async function createWindow(port) {
   mainWindow.loadURL(`http://127.0.0.1:${port}`)
   mainWindow.once('ready-to-show', () => mainWindow.show())
   createTray(mainWindow, store, app)
+  setupAutoUpdater(mainWindow)
 
   // Save window bounds on resize/move
   const saveBounds = () => store.set('windowBounds', mainWindow.getBounds())

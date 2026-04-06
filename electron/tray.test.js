@@ -1,3 +1,6 @@
+jest.mock('./updater', () => ({
+  checkForUpdatesManually: jest.fn()
+}))
 jest.mock('electron', () => ({
   Tray: jest.fn().mockImplementation(() => ({
     setToolTip: jest.fn(),
