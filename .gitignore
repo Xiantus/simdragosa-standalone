@@ -1,2 +1,22 @@
 tests/__pycache__/
 __pycache__/
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+autosim.db
+config.json
+results.json
+last_run.json
+
+# Electron / Node
+electron/node_modules/
+electron/dist/
+release/
+*.exe
+!static/simdragosa-icon.png
