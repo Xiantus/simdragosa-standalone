@@ -27,16 +27,47 @@ def _connect():
 # Schema
 # ---------------------------------------------------------------------------
 
-def _migrate_tooltip_add_spec(conn) -> None:
-    """One-time migration: add spec column + rebuild PK to include spec."""
+def _migrate_characters_remove_user_id(conn) -> None:
+    """Migration: drop user_id column from characters table if present."""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(characters)").fetchall()]
+    if "user_id" not in cols:
+        return
+    conn.execute("ALTER TABLE characters RENAME TO characters_old")
+    conn.execute("""
+        CREATE TABLE characters (
+            id                        TEXT    NOT NULL PRIMARY KEY,
+            name                      TEXT    NOT NULL,
+            spec                      TEXT    NOT NULL,
+            spec_id                   INTEGER NOT NULL DEFAULT 63,
+            loot_spec_id              INTEGER NOT NULL DEFAULT 63,
+            region                    TEXT    NOT NULL DEFAULT 'eu',
+            realm                     TEXT    NOT NULL DEFAULT '',
+            crafted_stats             TEXT    NOT NULL DEFAULT '36/49',
+            simc_string               TEXT    NOT NULL DEFAULT '',
+            ilvl                      REAL,
+            exclude_from_item_updates INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("""
+        INSERT OR IGNORE INTO characters
+            (id, name, spec, spec_id, loot_spec_id, region, realm,
+             crafted_stats, simc_string, ilvl, exclude_from_item_updates)
+        SELECT id, name, spec, spec_id, loot_spec_id, region, realm,
+               crafted_stats, simc_string, ilvl, exclude_from_item_updates
+        FROM characters_old
+    """)
+    conn.execute("DROP TABLE characters_old")
+
+
+def _migrate_tooltip_remove_user_id(conn) -> None:
+    """Migration: drop user_id from tooltip_data if present."""
     cols = [r[1] for r in conn.execute("PRAGMA table_info(tooltip_data)").fetchall()]
-    if "spec" in cols:
-        return  # already migrated
+    if "user_id" not in cols:
+        return
     conn.execute("ALTER TABLE tooltip_data RENAME TO tooltip_data_old")
     conn.execute("""
         CREATE TABLE tooltip_data (
             item_id    INTEGER NOT NULL,
-            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             char_name  TEXT    NOT NULL,
             realm      TEXT    NOT NULL,
             spec       TEXT    NOT NULL DEFAULT '',
@@ -45,19 +76,19 @@ def _migrate_tooltip_add_spec(conn) -> None:
             ilvl       INTEGER,
             item_name  TEXT,
             sim_date   TEXT    NOT NULL,
-            PRIMARY KEY (item_id, user_id, char_name, difficulty, spec)
+            PRIMARY KEY (item_id, char_name, difficulty, spec)
         )
     """)
     conn.execute("""
         INSERT INTO tooltip_data
-            (item_id, user_id, char_name, realm, spec, difficulty,
+            (item_id, char_name, realm, spec, difficulty,
              dps_gain, ilvl, item_name, sim_date)
-        SELECT item_id, user_id, char_name, realm, '' AS spec, difficulty,
+        SELECT item_id, char_name, realm, COALESCE(spec, ''), difficulty,
                dps_gain, ilvl, item_name, sim_date
         FROM tooltip_data_old
     """)
-    conn.execute("DELETE FROM tooltip_data WHERE spec = ''")
     conn.execute("DROP TABLE tooltip_data_old")
+
 
 
 def init_db(db_path: "Path | None" = None) -> None:
@@ -66,23 +97,16 @@ def init_db(db_path: "Path | None" = None) -> None:
     if db_path is not None:
         DB_PATH = db_path
     with _connect() as conn:
+
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                username      TEXT    NOT NULL UNIQUE,
-                password_hash TEXT    NOT NULL,
-                raidsid       TEXT
+            CREATE TABLE IF NOT EXISTS config (
+                key   TEXT NOT NULL PRIMARY KEY,
+                value TEXT
             )
         """)
-        try:
-            conn.execute("ALTER TABLE users ADD COLUMN raidsid TEXT")
-            conn.commit()
-        except Exception:
-            pass  # column already exists
         conn.execute("""
             CREATE TABLE IF NOT EXISTS characters (
-                id                        TEXT    NOT NULL,
-                user_id                   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                id                        TEXT    NOT NULL PRIMARY KEY,
                 name                      TEXT    NOT NULL,
                 spec                      TEXT    NOT NULL,
                 spec_id                   INTEGER NOT NULL DEFAULT 63,
@@ -92,14 +116,12 @@ def init_db(db_path: "Path | None" = None) -> None:
                 crafted_stats             TEXT    NOT NULL DEFAULT '36/49',
                 simc_string               TEXT    NOT NULL DEFAULT '',
                 ilvl                      REAL,
-                exclude_from_item_updates INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (id, user_id)
+                exclude_from_item_updates INTEGER NOT NULL DEFAULT 0
             )
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tooltip_data (
                 item_id    INTEGER NOT NULL,
-                user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 char_name  TEXT    NOT NULL,
                 realm      TEXT    NOT NULL,
                 spec       TEXT    NOT NULL DEFAULT '',
@@ -108,61 +130,40 @@ def init_db(db_path: "Path | None" = None) -> None:
                 ilvl       INTEGER,
                 item_name  TEXT,
                 sim_date   TEXT    NOT NULL,
-                PRIMARY KEY (item_id, user_id, char_name, difficulty, spec)
+                PRIMARY KEY (item_id, char_name, difficulty, spec)
             )
         """)
-        # Migration: rebuild tooltip_data to add spec column + updated PK
-        _migrate_tooltip_add_spec(conn)
+        _migrate_characters_remove_user_id(conn)
+        _migrate_tooltip_remove_user_id(conn)
 
 
 # ---------------------------------------------------------------------------
-# User helpers
+# Config helpers (single-user raidsid stored in config table)
 # ---------------------------------------------------------------------------
 
-def create_user(username: str, password_hash: str) -> int:
-    with _connect() as conn:
-        cur = conn.execute(
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-            (username, password_hash),
-        )
-        return cur.lastrowid
-
-
-def get_user_by_username(username: str) -> dict | None:
+def get_raidsid(user_id=None) -> str:
+    """Return the stored raidsid (user_id ignored, kept for API compat)."""
     with _connect() as conn:
         row = conn.execute(
-            "SELECT * FROM users WHERE username = ?", (username,)
+            "SELECT value FROM config WHERE key = 'raidsid'"
         ).fetchone()
-    return dict(row) if row else None
+    return (row["value"] if row else None) or ""
 
 
-def get_all_users() -> list[dict]:
+def set_raidsid(user_id=None, raidsid=None) -> None:
+    """Store the raidsid (user_id ignored, kept for API compat)."""
+    if raidsid is None and user_id is not None and not isinstance(user_id, int):
+        raidsid = user_id
+        user_id = None
     with _connect() as conn:
-        rows = conn.execute("SELECT id, username FROM users").fetchall()
-    return [dict(r) for r in rows]
-
-
-def get_user_by_id(user_id: int) -> dict | None:
-    with _connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM users WHERE id = ?", (user_id,)
-        ).fetchone()
-    return dict(row) if row else None
-
-
-def get_raidsid(user_id: int) -> str | None:
-    with _connect() as conn:
-        row = conn.execute(
-            "SELECT raidsid FROM users WHERE id = ?", (user_id,)
-        ).fetchone()
-    return row["raidsid"] if row else None
-
-
-def set_raidsid(user_id: int, raidsid: str) -> None:
-    with _connect() as conn:
-        conn.execute(
-            "UPDATE users SET raidsid = ? WHERE id = ?", (raidsid, user_id)
-        )
+        if raidsid:
+            conn.execute(
+                "INSERT INTO config (key, value) VALUES ('raidsid', ?)"
+                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (raidsid,),
+            )
+        else:
+            conn.execute("DELETE FROM config WHERE key = 'raidsid'")
 
 
 # ---------------------------------------------------------------------------
@@ -172,15 +173,14 @@ def set_raidsid(user_id: int, raidsid: str) -> None:
 def _row_to_char(row) -> dict:
     d = dict(row)
     d["exclude_from_item_updates"] = bool(d["exclude_from_item_updates"])
-    d.pop("user_id", None)
     return d
 
 
-def load_characters(user_id: int) -> list:
+def load_characters(user_id=None) -> list:
+    """Load all characters (user_id ignored, kept for API compat)."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM characters WHERE user_id = ? ORDER BY name, spec",
-            (user_id,),
+            "SELECT * FROM characters ORDER BY name, spec"
         ).fetchall()
     return [_row_to_char(r) for r in rows]
 
@@ -194,14 +194,17 @@ def load_all_characters() -> list:
     return [_row_to_char(r) for r in rows]
 
 
-def upsert_character(user_id: int, char: dict) -> None:
+def upsert_character(user_id_or_char, char=None) -> None:
+    """Upsert a character. Accepts (char,) or legacy (user_id, char) signature."""
+    if char is None:
+        char = user_id_or_char
     with _connect() as conn:
         conn.execute("""
             INSERT INTO characters
-                (id, user_id, name, spec, spec_id, loot_spec_id, region, realm,
+                (id, name, spec, spec_id, loot_spec_id, region, realm,
                  crafted_stats, simc_string, ilvl, exclude_from_item_updates)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id, user_id) DO UPDATE SET
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
                 name                      = excluded.name,
                 spec                      = excluded.spec,
                 spec_id                   = excluded.spec_id,
@@ -213,7 +216,7 @@ def upsert_character(user_id: int, char: dict) -> None:
                 ilvl                      = excluded.ilvl,
                 exclude_from_item_updates = excluded.exclude_from_item_updates
         """, (
-            char["id"], user_id,
+            char["id"],
             char["name"], char["spec"],
             char.get("spec_id", 63), char.get("loot_spec_id", 63),
             char.get("region", "eu"), char.get("realm", ""),
@@ -224,19 +227,28 @@ def upsert_character(user_id: int, char: dict) -> None:
         ))
 
 
-def update_character_ilvl(user_id: int, char_id: str, ilvl: float) -> None:
+def update_character_ilvl(user_id_or_char_id, char_id_or_ilvl=None, ilvl=None) -> None:
+    """Update character ilvl. Accepts (char_id, ilvl) or legacy (user_id, char_id, ilvl)."""
+    if ilvl is None:
+        char_id = user_id_or_char_id
+        ilvl = char_id_or_ilvl
+    else:
+        char_id = char_id_or_ilvl
     with _connect() as conn:
         conn.execute(
-            "UPDATE characters SET ilvl = ? WHERE id = ? AND user_id = ?",
-            (ilvl, char_id, user_id),
+            "UPDATE characters SET ilvl = ? WHERE id = ?",
+            (ilvl, char_id),
         )
 
 
-def delete_character(user_id: int, char_id: str) -> None:
+def delete_character(user_id_or_char_id, char_id=None) -> None:
+    """Delete a character. Accepts (char_id,) or legacy (user_id, char_id)."""
+    if char_id is None:
+        char_id = user_id_or_char_id
     with _connect() as conn:
         conn.execute(
-            "DELETE FROM characters WHERE id = ? AND user_id = ?",
-            (char_id, user_id),
+            "DELETE FROM characters WHERE id = ?",
+            (char_id,),
         )
 
 
@@ -245,42 +257,59 @@ def delete_character(user_id: int, char_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 def upsert_tooltip_entries(
-    user_id: int,
-    char_name: str,
-    realm: str,
-    spec: str,
-    difficulty: str,
-    entries: list[dict],
-    sim_date: str,
+    user_id_or_char_name,
+    char_name_or_realm=None,
+    realm_or_spec=None,
+    spec_or_difficulty=None,
+    difficulty_or_entries=None,
+    entries_or_sim_date=None,
+    sim_date=None,
 ) -> None:
-    """Bulk-upsert item DPS gains for one character + spec + difficulty from a completed sim."""
+    """Bulk-upsert item DPS gains for one character + spec + difficulty.
+
+    New signature:  (char_name, realm, spec, difficulty, entries, sim_date)
+    Legacy:         (user_id, char_name, realm, spec, difficulty, entries, sim_date)
+    """
+    if sim_date is None:
+        char_name  = user_id_or_char_name
+        realm      = char_name_or_realm
+        spec       = realm_or_spec
+        difficulty = spec_or_difficulty
+        entries    = difficulty_or_entries
+        sim_date   = entries_or_sim_date
+    else:
+        char_name  = char_name_or_realm
+        realm      = realm_or_spec
+        spec       = spec_or_difficulty
+        difficulty = difficulty_or_entries
+        entries    = entries_or_sim_date
+
     with _connect() as conn:
         for e in entries:
             conn.execute("""
                 INSERT INTO tooltip_data
-                    (item_id, user_id, char_name, realm, spec, difficulty,
+                    (item_id, char_name, realm, spec, difficulty,
                      dps_gain, ilvl, item_name, sim_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(item_id, user_id, char_name, difficulty, spec) DO UPDATE SET
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(item_id, char_name, difficulty, spec) DO UPDATE SET
                     dps_gain  = excluded.dps_gain,
                     ilvl      = excluded.ilvl,
                     item_name = excluded.item_name,
                     sim_date  = excluded.sim_date
             """, (
-                e["item_id"], user_id, char_name, realm, spec, difficulty,
+                e["item_id"], char_name, realm, spec, difficulty,
                 e["dps_gain"], e.get("ilvl"), e.get("item_name"), sim_date,
             ))
 
 
-def load_tooltip_data_for_user(user_id: int) -> dict:
-    """Return nested dict for Lua export, grouped by char → item → spec → difficulty."""
+def load_tooltip_data() -> dict:
+    """Return nested dict for Lua export, grouped by char -> item -> spec -> difficulty."""
     with _connect() as conn:
         rows = conn.execute(
             """SELECT char_name, realm, spec, difficulty, item_id,
                       dps_gain, ilvl, item_name, sim_date
-               FROM tooltip_data WHERE user_id = ?
-               ORDER BY char_name, item_id, spec""",
-            (user_id,),
+               FROM tooltip_data
+               ORDER BY char_name, item_id, spec"""
         ).fetchall()
 
     result: dict = {}
@@ -316,3 +345,8 @@ def load_tooltip_data_for_user(user_id: int) -> dict:
         result[key][item_id]["specs"][spec_name][diff_key] = r["dps_gain"]
 
     return result
+
+
+def load_tooltip_data_for_user(user_id=1) -> dict:
+    """Alias kept for backward compatibility."""
+    return load_tooltip_data()
