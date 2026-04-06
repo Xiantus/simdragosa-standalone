@@ -1240,11 +1240,53 @@ async function startRun() {
 
   if (!selections.length) { showToast('Select at least one character', true); return; }
 
+  window._pendingSelections = selections;
   const r = await fetch('/api/run', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ selections }) });
   const d = await r.json();
+  if (r.status === 409 && d.error === 'playwright_not_installed') {
+    document.getElementById('playwright-modal-backdrop').style.display = 'flex';
+    return;
+  }
   if (!r.ok) { showToast(d.error, true); return; }
 
   startPolling();
+}
+
+
+async function playwrightInstall() {
+  document.getElementById('playwright-modal-btns').style.display = 'none';
+  document.getElementById('playwright-install-progress').style.display = 'block';
+  try {
+    const resp = await fetch('/api/install-playwright', { method: 'POST' });
+    const d = await resp.json();
+    if (resp.ok && d.success) {
+      document.getElementById('playwright-modal-backdrop').style.display = 'none';
+      document.getElementById('playwright-install-progress').style.display = 'none';
+      document.getElementById('playwright-modal-btns').style.display = 'flex';
+      showToast('Browser component installed. Retrying sim…');
+      // Retry the sim automatically
+      if (window._pendingSelections) {
+        const r2 = await fetch('/api/run', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ selections: window._pendingSelections }) });
+        const d2 = await r2.json();
+        if (!r2.ok) { showToast(d2.error, true); return; }
+        startPolling();
+      }
+    } else {
+      document.getElementById('playwright-install-progress').style.display = 'none';
+      document.getElementById('playwright-modal-btns').style.display = 'flex';
+      showToast('Installation failed: ' + (d.error || 'unknown error'), true, 5000);
+    }
+  } catch(e) {
+    document.getElementById('playwright-install-progress').style.display = 'none';
+    document.getElementById('playwright-modal-btns').style.display = 'flex';
+    showToast('Installation failed: ' + e.message, true, 5000);
+  }
+}
+
+function playwrightCancel() {
+  document.getElementById('playwright-modal-backdrop').style.display = 'none';
+  document.getElementById('playwright-install-progress').style.display = 'none';
+  document.getElementById('playwright-modal-btns').style.display = 'flex';
 }
 
 function startPolling() {
@@ -1452,5 +1494,22 @@ function showToast(msg, err = false, duration = 2500) {
   toastTimer = setTimeout(() => t.classList.remove('show'), duration);
 }
 </script>
+
+<!-- ── Playwright install modal ──────────────────────────────────────────── -->
+<div id="playwright-modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:3000;align-items:center;justify-content:center;">
+  <div style="background:var(--surf);border:1px solid var(--border);border-radius:14px;padding:28px 32px;width:440px;max-width:95vw;">
+    <h3 style="color:var(--acc-h);margin-bottom:10px;">Browser Support Required</h3>
+    <p style="color:var(--text);font-size:13px;line-height:1.6;margin-bottom:20px;">Healer sims require a browser component (~200MB). Install now?</p>
+    <div id="playwright-install-progress" style="display:none;color:var(--sub);font-size:13px;margin-bottom:16px;">
+      <span class="spinner" style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px;"></span>
+      Installing browser component, please wait…
+    </div>
+    <div id="playwright-modal-btns" style="display:flex;gap:10px;">
+      <button class="btn-primary" onclick="playwrightInstall()" style="flex:1;">Install</button>
+      <button class="btn-secondary" onclick="playwrightCancel()" style="flex:1;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
