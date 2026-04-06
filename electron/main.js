@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron')
 const { findFreePort } = require('./port')
+const { createTray } = require('./tray')
 const { spawn } = require('child_process')
 const path = require('path')
 const http = require('http')
@@ -75,6 +76,7 @@ async function createWindow(port) {
 
   mainWindow.loadURL(`http://127.0.0.1:${port}`)
   mainWindow.once('ready-to-show', () => mainWindow.show())
+  createTray(mainWindow, store, app)
 
   // Save window bounds on resize/move
   const saveBounds = () => store.set('windowBounds', mainWindow.getBounds())
@@ -107,6 +109,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', () => {
+  const { destroyTray } = require('./tray'); destroyTray()
   app.isQuiting = true
   if (backendProcess) {
     backendProcess.kill()
