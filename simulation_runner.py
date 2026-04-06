@@ -1,13 +1,13 @@
 """simulation_runner.py — Unified orchestration layer for droptimizer sims.
 
-:class:`SimulationRunner` is the single entry point used by the Discord bot
+:class:`SimulationRunner` is the single entry point used by the web app
 and the CLI runner.  It owns:
 
 - SimC string parsing (name, region, realm, spec, class)
 - Character preset resolution from ``characters.json``
 - Healer/DPS routing (delegates to :mod:`sim_router`)
 - Parallel job fan-out
-- Async wrapper for Discord's event loop
+- Async wrapper for the caller's event loop
 
 Usage
 -----
@@ -140,7 +140,7 @@ class SimulationRunner:
     async def run_async(self, simc: str) -> list:
         """Async wrapper — runs :meth:`run` in a thread-pool executor.
 
-        Suitable for use inside a Discord.py async event handler without
+        Suitable for use inside an async event handler without
         blocking the event loop.
         """
         loop = asyncio.get_running_loop()
