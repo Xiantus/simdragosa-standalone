@@ -31,6 +31,21 @@ from sim_router import diff_label as get_diff_label, is_healer, run_qe_sim, run_
 from job_state import Job, JobStatus, SimRunnerState
 import db
 
+
+# ---------------------------------------------------------------------------
+# Playwright availability helper
+# ---------------------------------------------------------------------------
+
+def is_playwright_installed() -> bool:
+    """Return True if the Playwright Chromium binary is present on this machine."""
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser_path = p.chromium.executable_path
+            return os.path.exists(browser_path)
+    except Exception:
+        return False
+
 app = Flask(__name__)
 
 # Suppress noisy health-check poll entries from the Werkzeug access log.
@@ -687,6 +702,25 @@ def api_save_config():
         save_wow_savedvars_path(wow_path)
     return jsonify({"success": True})
 
+
+
+@app.post("/api/install-playwright")
+def install_playwright():
+    import subprocess
+    try:
+        result = subprocess.run(
+            ['python', '-m', 'playwright', 'install', 'chromium'],
+            capture_output=True, text=True, timeout=300
+        )
+        if result.returncode == 0:
+            return jsonify({"success": True})
+        else:
+            return jsonify({"success": False, "error": result.stderr}), 500
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "error": "Installation timed out"}), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.get("/api/tooltip-export")
 def api_tooltip_export():
     """Return the SimdragosaData.lua content as a downloadable file."""
@@ -785,6 +819,17 @@ def api_run():
 
     if not jobs:
         return jsonify({"error": "Nothing selected"}), 400
+
+    # If any selected character is a healer, require Playwright to be installed
+    for sel in selections:
+        char = chars_by_id.get(sel.get("char_id"))
+        if char and is_healer(char.get("spec_id", 63)):
+            if not is_playwright_installed():
+                return jsonify({
+                    "error": "playwright_not_installed",
+                    "message": "Playwright Chromium is not installed",
+                }), 409
+            break
 
     raidsid = db.get_raidsid(user_id)
     if not raidsid:
