@@ -43,7 +43,7 @@ jobs:
 
       - name: Install Node dependencies
         working-directory: electron
-        run: npm ci
+        run: npm install
 
       - name: Run Electron tests
         working-directory: electron
