@@ -13,7 +13,7 @@ DB_PATH = Path(__file__).parent / "autosim.db"
 
 @contextmanager
 def _connect():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:
@@ -60,7 +60,11 @@ def _migrate_tooltip_add_spec(conn) -> None:
     conn.execute("DROP TABLE tooltip_data_old")
 
 
-def init_db() -> None:
+def init_db(db_path: "Path | None" = None) -> None:
+    """Initialise the database. If *db_path* is given it overrides the module-level DB_PATH."""
+    global DB_PATH
+    if db_path is not None:
+        DB_PATH = db_path
     with _connect() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
