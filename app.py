@@ -134,8 +134,7 @@ db.init_db(_get_db_path())
 # immediately up-to-date after a server update (schema migrations, format changes, etc.)
 def _regenerate_all_lua() -> None:
     try:
-        for user in db.get_all_users():
-            _write_savedvariables(user["id"])
+        _write_savedvariables(1)
     except Exception as exc:
         log.warning("Startup Lua regeneration failed: %s", exc)
 
