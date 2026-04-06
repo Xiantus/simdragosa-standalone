@@ -14,6 +14,10 @@ jest.mock('electron', () => ({
   dialog: { showErrorBox: jest.fn() },
   ipcMain: { on: jest.fn() }
 }))
+jest.mock('./tray', () => ({
+  createTray: jest.fn(),
+  destroyTray: jest.fn()
+}))
 jest.mock('electron-store', () => {
   return jest.fn().mockImplementation(() => ({
     get: jest.fn((key, def) => def),
