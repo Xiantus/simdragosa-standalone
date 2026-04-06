@@ -608,6 +608,15 @@ def index():
         tb = _tb.format_exc()
         return "<pre style='color:red;padding:20px'>" + tb + "</pre>", 500
 
+@app.get("/_debug")
+def debug_route():
+    import traceback as _tb
+    try:
+        result = render_template("index.html")
+        return "Template OK, length=" + str(len(result))
+    except Exception:
+        return "<pre>" + _tb.format_exc() + "</pre>", 500
+
 
 @app.get("/api/characters")
 def api_get_characters():
