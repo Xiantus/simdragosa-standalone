@@ -1,12 +1,14 @@
 {
   "name": "simdragosa-standalone",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Standalone Windows desktop app for Simdragosa",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "test": "jest",
-    "build": "electron-builder"
+    "build": "electron-builder --config electron-builder.yml",
+    "build:dir": "electron-builder --config electron-builder.yml --dir",
+    "publish": "electron-builder --config electron-builder.yml --publish always"
   },
   "dependencies": {
     "electron-store": "^8.1.0",
