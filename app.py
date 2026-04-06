@@ -10,11 +10,11 @@ import shutil
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import requests as _requests
-from flask import Flask, jsonify, request, render_template, session, Response
+from flask import Flask, jsonify, request, render_template, Response
 
 log = logging.getLogger(__name__)
 
@@ -30,10 +30,8 @@ from raidbots_session import make_raidbots_session
 from sim_router import diff_label as get_diff_label, is_healer, run_qe_sim, run_raidbots_sim
 from job_state import Job, JobStatus, SimRunnerState
 import db
-from auth import auth_bp, require_login
 
 app = Flask(__name__)
-app.register_blueprint(auth_bp)
 
 # Suppress noisy health-check poll entries from the Werkzeug access log.
 logging.getLogger("werkzeug").addFilter(
@@ -114,7 +112,6 @@ def _get_or_create_secret_key() -> str:
 
 
 app.secret_key = _get_or_create_secret_key()
-app.permanent_session_lifetime = timedelta(days=30)
 
 db.init_db(_get_db_path())
 
@@ -580,21 +577,18 @@ def _propagate_gear(updated: dict, chars: list) -> list[str]:
 # ---------------------------------------------------------------------------
 
 @app.get("/")
-@require_login
 def index():
     return render_template("index.html")
 
 
 @app.get("/api/characters")
-@require_login
 def api_get_characters():
-    return jsonify(db.load_characters(session["user_id"]))
+    return jsonify(db.load_characters(1))
 
 
 @app.post("/api/characters")
-@require_login
 def api_upsert_character():
-    user_id = session["user_id"]
+    user_id = 1
     char = request.json
     char["id"] = f"{char['name'].lower()}-{char['spec'].lower()}"
     db.upsert_character(user_id, char)
@@ -607,16 +601,14 @@ def api_upsert_character():
 
 
 @app.delete("/api/characters/<char_id>")
-@require_login
 def api_delete_character(char_id):
-    db.delete_character(session["user_id"], char_id)
+    db.delete_character(1, char_id)
     return jsonify({"ok": True})
 
 
 @app.get("/api/ilvl/<char_id>")
-@require_login
 def api_get_ilvl(char_id):
-    user_id = session["user_id"]
+    user_id = 1
     chars = db.load_characters(user_id)
     char  = next((c for c in chars if c["id"] == char_id), None)
     if not char:
@@ -635,7 +627,6 @@ def api_get_ilvl(char_id):
 
 
 @app.get("/api/settings")
-@require_login
 def api_get_settings():
     sid      = load_raidsid()
     masked   = sid[:12] + "…" if len(sid) > 12 else sid
@@ -648,7 +639,6 @@ def api_get_settings():
 
 
 @app.post("/api/settings")
-@require_login
 def api_save_settings():
     data = request.json
     if "raidsid" in data:
@@ -659,26 +649,23 @@ def api_save_settings():
 
 
 @app.get("/api/raidsid")
-@require_login
 def api_get_raidsid():
-    val = db.get_raidsid(session["user_id"])
+    val = db.get_raidsid(1)
     return jsonify({"raidsid": val or ""})
 
 
 @app.post("/api/raidsid")
-@require_login
 def api_set_raidsid():
     data = request.get_json(force=True)
     val = (data.get("raidsid") or "").strip()
-    db.set_raidsid(session["user_id"], val if val else None)
+    db.set_raidsid(1, val if val else None)
     return jsonify({"ok": True})
 
 
 @app.get("/api/tooltip-export")
-@require_login
 def api_tooltip_export():
     """Return the SimdragosaData.lua content as a downloadable file."""
-    user_id = session["user_id"]
+    user_id = 1
     lua     = _build_lua(user_id)
     return Response(
         lua,
@@ -688,7 +675,6 @@ def api_tooltip_export():
 
 
 @app.get("/api/tooltip-debug")
-@require_login
 def api_tooltip_debug():
     """Fetch the data.json for the most recent completed sim and return its
     raw structure so we can verify field names and fix the parser."""
@@ -742,9 +728,8 @@ def api_tooltip_debug():
 
 
 @app.post("/api/run")
-@require_login
 def api_run():
-    user_id     = session["user_id"]
+    user_id     = 1
     selections  = request.json.get("selections", [])
     chars_all   = db.load_characters(user_id)
     chars_by_id = {c["id"]: c for c in chars_all}
@@ -790,9 +775,8 @@ def api_run():
 
 
 @app.get("/api/status")
-@require_login
 def api_status():
-    return jsonify(state.snapshot_for_user(session["user_id"]))
+    return jsonify(state.snapshot())
 
 
 # ---------------------------------------------------------------------------
