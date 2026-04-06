@@ -601,7 +601,12 @@ def _propagate_gear(updated: dict, chars: list) -> list[str]:
 
 @app.get("/")
 def index():
-    return render_template("index.html")
+    import traceback as _tb
+    try:
+        return render_template("index.html")
+    except Exception:
+        tb = _tb.format_exc()
+        return "<pre style='color:red;padding:20px'>" + tb + "</pre>", 500
 
 
 @app.get("/api/characters")
