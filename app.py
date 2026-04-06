@@ -662,6 +662,31 @@ def api_set_raidsid():
     return jsonify({"ok": True})
 
 
+
+
+@app.get("/api/config")
+def api_get_config():
+    raidsid  = load_raidsid()
+    wow_path = load_wow_savedvars_path()
+    return jsonify({
+        "raidsid":       raidsid,
+        "wow_path":      wow_path,
+        "is_configured": bool(raidsid),
+    })
+
+
+@app.post("/api/config")
+def api_save_config():
+    data     = request.get_json(force=True)
+    raidsid  = (data.get("raidsid") or "").strip()
+    wow_path = (data.get("wow_path") or "").strip()
+    if not raidsid:
+        return jsonify({"error": "raidsid is required"}), 400
+    save_raidsid(raidsid)
+    if wow_path:
+        save_wow_savedvars_path(wow_path)
+    return jsonify({"success": True})
+
 @app.get("/api/tooltip-export")
 def api_tooltip_export():
     """Return the SimdragosaData.lua content as a downloadable file."""
