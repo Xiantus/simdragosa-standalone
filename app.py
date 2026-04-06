@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """app.py — Auto Sim web interface"""
 
+import argparse
 import json
 import logging
+import os
 import secrets
+import shutil
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -39,9 +42,56 @@ logging.getLogger("werkzeug").addFilter(
     })()
 )
 
-CONFIG_PATH  = Path(__file__).parent / "config.json"
-RESULTS_PATH = Path(__file__).parent / "results.json"
-REPORT_URL   = RAIDBOTS_BASE + "/simbot/report/{sim_id}"
+REPORT_URL = RAIDBOTS_BASE + "/simbot/report/{sim_id}"
+
+# ---------------------------------------------------------------------------
+# Data directory helpers
+# ---------------------------------------------------------------------------
+
+def get_data_dir() -> Path:
+    """Return the app data directory, creating it if necessary.
+
+    - Windows: %APPDATA%\Simdragosa    - Fallback (non-Windows / dev): directory next to app.py
+    """
+    if os.name == "nt":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            data_dir = Path(appdata) / "Simdragosa"
+        else:
+            data_dir = Path(__file__).parent
+    else:
+        data_dir = Path(__file__).parent
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
+
+
+def _get_config_path() -> Path:
+    return get_data_dir() / "config.json"
+
+
+def _get_results_path() -> Path:
+    return get_data_dir() / "results.json"
+
+
+def _get_db_path() -> Path:
+    return get_data_dir() / "autosim.db"
+
+
+def _ensure_config() -> None:
+    """Copy config.example.json to the data dir if config.json does not exist."""
+    config_path = _get_config_path()
+    if not config_path.exists():
+        example = Path(__file__).parent / "config.example.json"
+        if example.exists():
+            shutil.copy(example, config_path)
+            log.info("Copied config.example.json -> %s", config_path)
+
+
+# Run config bootstrap before anything uses CONFIG_PATH
+_ensure_config()
+
+CONFIG_PATH  = _get_config_path()
+RESULTS_PATH = _get_results_path()
 
 # ---------------------------------------------------------------------------
 # Secret key — generated once and persisted in config.json
@@ -66,7 +116,7 @@ def _get_or_create_secret_key() -> str:
 app.secret_key = _get_or_create_secret_key()
 app.permanent_session_lifetime = timedelta(days=30)
 
-db.init_db()
+db.init_db(_get_db_path())
 
 # Regenerate SimdragosaData.lua for every user on startup so the file is
 # immediately up-to-date after a server update (schema migrations, format changes, etc.)
@@ -266,11 +316,14 @@ def _write_savedvariables(user_id: int) -> None:
     wow_path = load_wow_savedvars_path()
     if not wow_path:
         return
-    target = Path(wow_path) / "SimdragosaData.lua"
+    lua_content = _build_lua(user_id)
+    lua_path = get_data_dir() / "SimdragosaData.lua"
+    target   = Path(wow_path) / "SimdragosaData.lua"
     try:
+        lua_path.write_text(lua_content, encoding="utf-8")
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(_build_lua(user_id), encoding="utf-8")
-        log.info("SavedVariables written → %s", target)
+        target.write_text(lua_content, encoding="utf-8")
+        log.info("SavedVariables written -> %s", target)
     except Exception as exc:
         log.warning("Could not write SavedVariables: %s", exc)
 
@@ -742,17 +795,25 @@ def api_status():
     return jsonify(state.snapshot_for_user(session["user_id"]))
 
 
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description="Simdragosa standalone backend")
+    parser.add_argument(
+        "--port", type=int, default=5000,
+        help="Port to bind Flask to (default: 5000)",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    import webbrowser, threading as _t
+    import webbrowser
+    import threading as _t
 
-    try:
-        import discord_bot as _db_mod
-        _cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
-        _bot_token = _cfg.get("discord_bot_token")
-        if _bot_token:
-            _t.Thread(target=_db_mod.start, args=(_bot_token,), daemon=True).start()
-    except Exception as _e:
-        print(f"[discord] Bot not started: {_e}")
+    args = _parse_args()
+    port = args.port
 
-    _t.Timer(0.8, lambda: webbrowser.open("http://localhost:5000")).start()
-    app.run(host="0.0.0.0", debug=False, port=5000, use_reloader=False)
+    _t.Timer(0.8, lambda: webbrowser.open(f"http://localhost:{port}")).start()
+    app.run(host="0.0.0.0", debug=False, port=port, use_reloader=False)
