@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Simdragosa</title>
+<link rel="icon" type="image/png" href="/static/simdragosa-icon.png">
+<style>
+:root {
+  --bg:       #13131f;
+  --surf:     #1c1c2e;
+  --surf2:    #252538;
+  --border:   #2e2e48;
+  --text:     #dde0f0;
+  --sub:      #7878a0;
+  --accent:   #7c6af7;
+  --acc-h:    #9a8cff;
+  --green:    #4ade80;
+  --red:      #f87171;
+  --yellow:   #fbbf24;
+  --blue:     #60a5fa;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Header */
+header { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 52px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+header h1 { font-size: 1rem; font-weight: 700; letter-spacing: .04em; color: var(--acc-h); flex: 1; }
+#settings-btn { background: none; border: 1px solid var(--border); color: var(--sub); border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 13px; }
+#settings-btn:hover { border-color: var(--accent); color: var(--text); }
+#sim-ready-badge { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; padding:3px 9px; border-radius:20px; cursor:default; transition:.2s; }
+#sim-ready-badge.ready  { background:rgba(74,222,128,.12); color:var(--green); border:1px solid rgba(74,222,128,.3); }
+#sim-ready-badge.not-ready { background:rgba(248,113,113,.12); color:var(--red); border:1px solid rgba(248,113,113,.3); cursor:pointer; }
+#sim-ready-badge .dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+
+/* Layout */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* Left panel */
+.left { width: 300px; flex-shrink: 0; border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.panel-header { padding: 14px 16px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sub); display: flex; justify-content: space-between; align-items: center; }
+.chars-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+.char-card { background: var(--surf); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: border-color .15s; }
+.char-card:hover { border-color: var(--accent); }
+.char-info { flex: 1; min-width: 0; }
+.char-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.char-meta { color: var(--sub); font-size: 12px; }
+.icon-btn { background: none; border: none; color: var(--sub); cursor: pointer; padding: 4px; border-radius: 4px; line-height: 1; }
+.icon-btn:hover { color: var(--text); background: var(--surf2); }
+.icon-btn.del:hover { color: var(--red); }
+.add-btn { margin: 0 8px 8px; background: var(--surf2); border: 1px dashed var(--border); color: var(--sub); border-radius: 8px; padding: 9px; width: calc(100% - 16px); cursor: pointer; font-size: 13px; transition: all .15s; }
+.add-btn:hover { border-color: var(--accent); color: var(--acc-h); }
+
+/* Right panel */
+.right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Run section */
+.run-section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.run-section h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sub); margin-bottom: 12px; }
+#char-selector { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.selector-row { display: flex; align-items: center; gap: 10px; background: var(--surf); border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px; }
+.selector-row label { flex: 1; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.diff-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.diff-cb { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--sub); cursor: pointer; }
+.diff-cb input { accent-color: var(--accent); width: 14px; height: 14px; }
+input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+.empty-note { color: var(--sub); font-size: 13px; padding: 8px 0; }
+.run-controls { display: flex; align-items: center; gap: 12px; }
+#go-btn { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 9px 28px; font-size: 14px; font-weight: 700; cursor: pointer; letter-spacing: .05em; transition: background .15s; }
+#go-btn:hover:not(:disabled) { background: var(--acc-h); }
+#go-btn:disabled { opacity: .4; cursor: not-allowed; }
+#run-status-text { color: var(--sub); font-size: 13px; }
+
+/* Results */
+.results-section { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.results-section h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sub); }
+#jobs-list { display: flex; flex-direction: column; gap: 6px; }
+.job-row { background: var(--surf); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 12px; }
+.job-label { flex: 1; font-weight: 500; }
+.badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: .05em; }
+.badge-pending  { background: #2a2a3e; color: var(--sub); }
+.badge-fetching { background: #1e2a3e; color: var(--blue); }
+.badge-submitting { background: #1e2a3e; color: var(--blue); }
+.badge-running  { background: #1e2a3e; color: var(--blue); }
+.badge-done     { background: #1a3028; color: var(--green); }
+.badge-failed   { background: #3e1e1e; color: var(--red); }
+.url-actions { display: flex; gap: 6px; align-items: center; }
+.url-btn { background: var(--surf2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 12px; color: var(--acc-h); cursor: pointer; transition: all .15s; white-space: nowrap; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.url-btn:hover { border-color: var(--accent); background: var(--border); color: var(--text); }
+.sim-preview { height: 56px; width: auto; border-radius: 6px; border: 1px solid var(--border); flex-shrink: 0; }
+
+/* Log */
+.log-wrap { margin-top: 4px; }
+.log-toggle { background: none; border: none; color: var(--sub); font-size: 12px; cursor: pointer; padding: 2px 0; }
+.log-toggle:hover { color: var(--text); }
+#log-box { background: var(--surf); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-family: 'Consolas', monospace; font-size: 12px; color: var(--sub); max-height: 160px; overflow-y: auto; margin-top: 6px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+
+/* Modal */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100; align-items: center; justify-content: center; }
+.modal-bg.open { display: flex; }
+.modal { background: var(--surf); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 520px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+.modal h3 { font-size: 1rem; margin-bottom: 18px; color: var(--acc-h); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-full { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 12px; color: var(--sub); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.field input, .field select, .field textarea { background: var(--surf2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-size: 13px; font-family: inherit; outline: none; transition: border-color .15s; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+.field textarea { resize: vertical; min-height: 120px; font-family: 'Consolas', monospace; font-size: 12px; }
+.modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+.btn-primary { background: var(--accent); color: #fff; border: none; border-radius: 7px; padding: 8px 20px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.btn-primary:hover { background: var(--acc-h); }
+.btn-secondary { background: var(--surf2); color: var(--text); border: 1px solid var(--border); border-radius: 7px; padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btn-secondary:hover { border-color: var(--accent); color: var(--acc-h); }
+.btn-cancel { background: none; border: 1px solid var(--border); color: var(--sub); border-radius: 7px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+.btn-cancel:hover { border-color: var(--accent); color: var(--text); }
+
+/* Settings panel */
+#settings-panel { display: none; position: fixed; top: 52px; right: 0; width: 320px; background: var(--surf); border: 1px solid var(--border); border-top: none; border-right: none; padding: 16px; z-index: 50; border-bottom-left-radius: 10px; }
+#settings-panel.open { display: block; }
+#settings-panel h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sub); margin-bottom: 10px; }
+#settings-panel .field { margin-bottom: 10px; }
+
+/* Help modal */
+#help-modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 100; align-items: center; justify-content: center; }
+#help-modal-backdrop.open { display: flex; }
+#help-modal { background: var(--surf); border: 1px solid var(--border); border-radius: 12px; padding: 24px 26px; width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto; position: relative; }
+#help-modal h3 { font-size: .95rem; font-weight: 700; color: var(--acc-h); margin-bottom: 16px; }
+#help-modal h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sub); margin: 16px 0 6px; }
+#help-modal p { color: var(--text); font-size: 13px; line-height: 1.6; margin-bottom: 8px; }
+#help-modal .path-block { background: var(--surf2); border: 1px solid var(--border); border-radius: 7px; padding: 10px 13px; font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 12px; color: var(--acc-h); line-height: 1.8; white-space: pre-wrap; word-break: break-all; margin-bottom: 8px; }
+#help-modal .path-block .dim { color: var(--sub); }
+#help-modal .path-block .hi  { color: var(--yellow); }
+#help-modal .note { background: #1e2a1e; border: 1px solid #2e4a2e; border-radius: 7px; padding: 9px 12px; font-size: 12px; color: #a0d0a0; margin-bottom: 8px; }
+#help-modal .close-btn { position: absolute; top: 14px; right: 16px; background: none; border: none; color: var(--sub); font-size: 18px; cursor: pointer; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+#help-modal .close-btn:hover { color: var(--text); background: var(--surf2); }
+.help-btn { background: none; border: 1px solid var(--border); color: var(--sub); border-radius: 50%; width: 16px; height: 16px; font-size: 10px; font-weight: 700; cursor: pointer; line-height: 1; padding: 0; margin-left: 5px; vertical-align: middle; }
+.help-btn:hover { border-color: var(--accent); color: var(--acc-h); }
+#settings-panel input { width: 100%; }
+
+/* Toast */
+#toast { position: fixed; bottom: 24px; right: 24px; background: var(--surf2); border: 1px solid var(--green); color: var(--green); border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 200; }
+#toast.show { opacity: 1; }
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Character groups — left panel */
+.char-group { margin-bottom: 6px; }
+.char-group-header { background: var(--surf); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: border-color .15s; user-select: none; }
+.char-group-header:hover { border-color: var(--accent); }
+.char-group-header.open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent; }
+.char-group-body { border: 1px solid var(--border); border-top: none; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; overflow: hidden; }
+.char-group-body .char-card { margin-bottom: 0; border-radius: 0; border: none; border-top: 1px solid var(--border); }
+.char-group-body .char-card:first-child { border-top: none; }
+.expand-arrow { color: var(--sub); font-size: 10px; transition: transform .15s; flex-shrink: 0; }
+.expand-arrow.open { transform: rotate(90deg); }
+.single-char { margin-bottom: 6px; }
+
+/* Selector groups — run section */
+.sel-group { display: flex; flex-direction: column; background: var(--surf); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.sel-group-header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; user-select: none; transition: background .1s; }
+.sel-group-header:hover { background: var(--surf2); }
+.sel-group-header .expand-arrow { margin-left: 2px; }
+.sel-group-specs { border-top: 1px solid var(--border); }
+.sel-group-specs .selector-row { border-radius: 0; border: none; border-top: 1px solid var(--border); margin-bottom: 0; padding-left: 28px; }
+.sel-group-specs .selector-row:first-child { border-top: none; }
+input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; }
+
+/* Job groups — results section */
+.job-group { display: flex; flex-direction: column; background: var(--surf); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.job-group-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; transition: background .1s; }
+.job-group-header:hover { background: var(--surf2); }
+.job-group-body .job-row { border-radius: 0; border: none; border-top: 1px solid var(--border); }
+.job-group-body .result-row { border-radius: 0; border: none; border-top: 1px solid var(--border); }
+.job-group-body .result-row:first-child { border-top: none; }
+
+/* Result rows */
+.result-row { background: var(--surf); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.result-row-main { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+
+/* Active strip */
+@keyframes spin { to { transform: rotate(360deg); } }
+.active-strip { border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+.active-strip h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sub); margin-bottom: 4px; }
+.active-job-row { background: var(--surf); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.active-job-main { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex-shrink: 0; }
+.elapsed { font-size: 11px; color: var(--sub); white-space: nowrap; }
+.job-log-toggle { background: none; border: none; color: var(--sub); font-size: 12px; cursor: pointer; padding: 2px 4px; white-space: nowrap; }
+.job-log-toggle:hover { color: var(--text); }
+.job-log-box { background: var(--surf2); border-top: 1px solid var(--border); padding: 8px 12px; font-family: 'Consolas', monospace; font-size: 11px; color: var(--sub); max-height: 120px; overflow-y: auto; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+
+/* Extra badge variants */
+.badge-skipped   { background: #2a2a3e; color: var(--sub); }
+.badge-cancelled { background: #2a2a3e; color: var(--sub); }
+.toggle-switch { position:relative; display:inline-block; width:40px; height:22px; }
+.toggle-switch input { opacity:0; width:0; height:0; }
+.toggle-slider { position:absolute; cursor:pointer; inset:0; background:var(--surf2); border-radius:22px; transition:.2s; }
+.toggle-slider:before { content:""; position:absolute; height:16px; width:16px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
+.toggle-switch input:checked + .toggle-slider { background:var(--acc-h); }
+.toggle-switch input:checked + .toggle-slider:before { transform:translateX(18px); }
+
+/* Onboarding step dots */
+.ob-dot { width:8px; height:8px; border-radius:50%; background:var(--surf2); border:1px solid var(--border); transition:.2s; }
+.ob-dot-active { background:var(--acc-h); border-color:var(--acc-h); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><img src="/static/simdragosa-icon.png" alt="" style="height:38px;width:auto;vertical-align:middle;margin-right:6px;"> Simdragosa</h1>
+  <span id="sim-ready-badge" class="not-ready" onclick="toggleSettings()" title="Click to open Settings"><span class="dot"></span><span id="sim-ready-label">No raidsid</span></span>
+  <span style="font-size:12px;color:var(--sub)">{{ session.username }}</span>
+  <script>const _CURRENT_USER = {{ session.username | tojson }};</script>
+  <button class="btn-secondary" onclick="_obStep=1;_obRender();document.getElementById('onboarding-backdrop').style.display='flex'" style="font-size:11px;padding:4px 8px">Getting started</button>
+  <button id="settings-btn" onclick="toggleSettings()">⚙ Settings</button>
+  <a href="/logout" style="background:none;border:1px solid var(--border);color:var(--sub);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:13px;text-decoration:none;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--sub)'">Log out</a>
+</header>
+
+<div id="settings-panel">
+  <h4>Settings</h4>
+  <div style="margin-bottom:16px">
+    <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sub);display:block;margin-bottom:6px">
+      Raidbots Session ID
+      <button class="help-btn" onclick="openRaidsidHelp()" style="margin-left:6px">?</button>
+    </label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="password" id="raidsid-input" placeholder="Paste your raidsid cookie value"
+        style="flex:1;background:var(--surf2);border:1px solid var(--border);border-radius:7px;padding:7px 10px;color:var(--text);font-size:13px;outline:none">
+      <button class="btn-secondary" onclick="saveRaidsid()" style="white-space:nowrap">Save</button>
+    </div>
+    <p style="font-size:11px;color:var(--sub);margin-top:5px">Required to submit sims. Stored only on this server, never shared.</p>
+  </div>
+  <div class="field">
+    <label>WoW data folder <span style="color:var(--sub);font-weight:400;text-transform:none;font-size:11px">writes SimdragosaData.lua after each sim</span> <button class="help-btn" onclick="openFolderHelp()" title="Setup instructions">?</button></label>
+    <div id="wow-folder-row" style="display:flex;align-items:center;gap:8px;margin-top:6px">
+      <span id="wow-folder-name" style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--sub)">Not connected</span>
+      <button class="btn-secondary" id="wow-connect-btn" style="padding:5px 10px;font-size:12px;flex-shrink:0">Connect folder</button>
+    </div>
+    <p id="wow-fs-unsupported" style="display:none;font-size:12px;color:var(--sub);margin-top:6px">Direct folder access requires Chrome or Edge. Use the download button below.</p>
+  </div>
+  <div class="settings-row" style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--text)">Auto-deliver Lua after sims</div>
+      <div style="font-size:11px;color:var(--sub);margin-top:2px">Write SimdragosaData.lua automatically when sims complete</div>
+    </div>
+    <label class="toggle-switch" style="flex-shrink:0;margin-left:12px">
+      <input type="checkbox" id="auto-deliver-toggle" onchange="saveAutoDeliverPref()">
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+
+<!-- Folder setup help modal -->
+<div id="folder-help-backdrop" onclick="if(event.target===this)closeFolderHelp()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center">
+  <div style="background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:24px;width:480px;max-width:95vw;position:relative;max-height:85vh;overflow-y:auto">
+    <button onclick="closeFolderHelp()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--sub);font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px">✕</button>
+    <h3 style="margin-bottom:12px;color:var(--acc-h)">WoW data folder setup</h3>
+    <div style="background:#2a1a1a;border:1px solid #5a2a2a;border-radius:7px;padding:10px 13px;font-size:12px;color:#f87171;margin-bottom:14px;line-height:1.6"><strong>⚠ WoW must not be installed in <code>Program Files</code>.</strong> Chrome's folder picker cannot write there. Install WoW to a user-writable path such as <code>C:\Games\World of Warcraft</code> before continuing.</div>
+    <p style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:14px">Once WoW is in a user-writable location, setup is straightforward — no junctions or admin required.</p>
+    <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sub);margin-bottom:6px">Step 1 — create the data folder <span style="font-weight:400;text-transform:none;letter-spacing:0">(skip if it already exists)</span></p>
+    <div style="background:var(--surf2);border:1px solid var(--border);border-radius:7px;padding:10px 13px;font-family:'Cascadia Code','Consolas',monospace;font-size:12px;color:var(--acc-h);margin-bottom:4px;word-break:break-all">New-Item -ItemType Directory -Path "<span style="color:var(--yellow)">&lt;WoW&gt;</span>\Interface\AddOns\Simdragosa\data" -Force</div>
+    <p style="font-size:12px;color:var(--sub);margin-bottom:14px">Replace <code style="color:var(--yellow)">&lt;WoW&gt;</code> with your install path, e.g. <code>C:\Games\World of Warcraft\_retail_</code></p>
+    <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sub);margin-bottom:6px">Step 2 — connect the folder here</p>
+    <p style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:16px">Click <strong>Connect folder</strong> and select the <code>data</code> folder at <code><span style="color:var(--yellow)">&lt;WoW&gt;</span>\Interface\AddOns\Simdragosa\data</code>. Done — SimdragosaData.lua will be written there after every sim and WoW loads it on <code>/reload</code>.</p>
+    <button class="btn-primary" onclick="closeFolderHelp()" style="width:100%">Got it</button>
+  </div>
+</div>
+<div id="raidsid-help-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1100;align-items:center;justify-content:center">
+  <div style="background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto">
+    <h3 style="margin-bottom:12px;color:var(--acc-h)">How to find your Raidbots session ID</h3>
+    <ol style="font-size:13px;color:var(--text);line-height:1.8;padding-left:18px;margin-bottom:16px">
+      <li>Open <strong>raidbots.com</strong> in Chrome or Edge (no account required).</li>
+      <li>Press <strong>F12</strong> to open DevTools.</li>
+      <li>Go to the <strong>Application</strong> tab.</li>
+      <li>In the left sidebar, expand <strong>Cookies</strong> and click <code>https://www.raidbots.com</code>.</li>
+      <li>Find the cookie named <strong><code>raidsid</code></strong> and copy its <strong>Value</strong>.</li>
+      <li>Paste it in the field above and click <strong>Save</strong>.</li>
+    </ol>
+    <p style="font-size:12px;color:var(--sub);margin-bottom:16px">The raidsid cookie acts as your session token. It does not require a paid Raidbots account, but a free account increases your sim quota.</p>
+    <button class="btn-primary" onclick="closeRaidsidHelp()" style="width:100%">Got it</button>
+  </div>
+</div>
+  <button class="btn-primary" onclick="saveSettings()" style="width:100%;margin-bottom:8px">Save</button>
+  <button class="btn-secondary" onclick="downloadTooltipLua()" id="wow-download-btn" style="width:100%">⬇ Download SimdragosaData.lua</button>
+</div>
+
+<div class="main">
+  <!-- Left: Characters -->
+  <div class="left">
+    <div class="panel-header">
+      <span>Characters</span>
+    </div>
+    <div id="chars-list" class="chars-list"></div>
+    <button class="add-btn" onclick="openModal()">+ Add Character</button>
+  </div>
+
+  <!-- Right: Run + Results -->
+  <div class="right">
+    <div class="run-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h2 style="margin-bottom:0">Run</h2>
+        <button id="select-all-btn" onclick="toggleSelectAll()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;color:var(--sub);cursor:pointer">Select All</button>
+      </div>
+      <div id="char-selector"></div>
+      <div class="run-controls">
+        <button id="go-btn" onclick="startRun()">GO</button>
+        <span id="run-status-text"></span>
+      </div>
+    </div>
+
+    <!-- Active sims strip (hidden when empty) -->
+    <div id="active-strip" class="active-strip" style="display:none">
+      <h2>Active Sims</h2>
+      <div id="active-jobs-list"></div>
+    </div>
+
+    <div class="results-section">
+      <h2>Results</h2>
+      <div id="jobs-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Character Modal -->
+<div class="modal-bg" id="modal-bg" onclick="if(event.target===this) closeModal()">
+  <div class="modal">
+    <h3 id="modal-title">Add Character</h3>
+    <div class="form-grid">
+      <div class="field form-full">
+        <label>SimC String <span style="color:var(--sub);font-weight:400;text-transform:none;letter-spacing:0">— paste here, fields fill automatically</span></label>
+        <textarea id="f-simc" placeholder='mage="Xiage"&#10;level=80&#10;region=eu&#10;server=draenor&#10;spec=fire&#10;…' oninput="parseSimc()"></textarea>
+      </div>
+      <div class="field">
+        <label>Character Name</label>
+        <input id="f-name" type="text" placeholder="Xiage">
+      </div>
+      <div class="field">
+        <label>Spec</label>
+        <input id="f-spec" type="text" placeholder="Fire">
+      </div>
+      <div class="field">
+        <label>Region</label>
+        <select id="f-region">
+          <option value="eu">EU</option>
+          <option value="us">US</option>
+          <option value="kr">KR</option>
+          <option value="tw">TW</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Realm</label>
+        <input id="f-realm" type="text" placeholder="draenor">
+      </div>
+      <details style="margin-bottom:12px;grid-column:1/-1">
+        <summary style="cursor:pointer;font-size:12px;color:var(--sub);user-select:none">Advanced options</summary>
+        <div style="padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>Spec ID</label>
+            <input id="f-spec-id" type="number" placeholder="63">
+          </div>
+          <div class="field">
+            <label>Loot Spec ID</label>
+            <input id="f-loot-spec-id" type="number" placeholder="same as spec id">
+          </div>
+        </div>
+      </details>
+      <div class="field">
+        <label>Crafted Stats</label>
+        <select id="f-crafted-stats">
+          <option value="36/49">Haste / Versatility</option>
+          <option value="36/32">Haste / Critical Strike</option>
+          <option value="36/40">Haste / Mastery</option>
+          <option value="32/36">Critical Strike / Haste</option>
+          <option value="32/40">Critical Strike / Mastery</option>
+          <option value="32/49">Critical Strike / Versatility</option>
+          <option value="40/36">Mastery / Haste</option>
+          <option value="40/32">Mastery / Critical Strike</option>
+          <option value="40/49">Mastery / Versatility</option>
+          <option value="49/36">Versatility / Haste</option>
+          <option value="49/32">Versatility / Critical Strike</option>
+          <option value="49/40">Versatility / Mastery</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:14px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub);cursor:pointer">
+        <input type="checkbox" id="f-exclude-updates">
+        Exclude from gear updates when another profile with the same character is saved
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveChar()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Onboarding modal -->
+<div id="onboarding-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1200;align-items:center;justify-content:center">
+  <div style="background:var(--surf);border:1px solid var(--border);border-radius:14px;padding:28px;max-width:520px;width:92%;max-height:85vh;overflow-y:auto">
+
+    <!-- Step indicators -->
+    <div style="display:flex;gap:6px;justify-content:center;margin-bottom:20px" id="ob-steps">
+      <div class="ob-dot ob-dot-active"></div>
+      <div class="ob-dot"></div>
+      <div class="ob-dot"></div>
+    </div>
+
+    <!-- Step 1 -->
+    <div id="ob-step-1">
+      <h3 style="color:var(--acc-h);margin-bottom:10px">Welcome to Simdragosa 👋</h3>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:12px">
+        To submit sims you need a <strong>Raidbots session ID</strong>. This is a cookie from raidbots.com that lets the app submit sims on your behalf — no paid account needed.
+      </p>
+      <ol style="font-size:13px;color:var(--text);line-height:1.9;padding-left:18px;margin-bottom:16px">
+        <li>Open <a href="https://www.raidbots.com" target="_blank" style="color:var(--acc-h)">raidbots.com</a> in this browser.</li>
+        <li>Press <strong>F12</strong> → <strong>Application</strong> tab → <strong>Cookies</strong> → raidbots.com</li>
+        <li>Copy the value of the <code>raidsid</code> cookie.</li>
+        <li>Paste it in <strong>Settings → Raidbots Session ID</strong>.</li>
+      </ol>
+      <p style="font-size:12px;color:var(--sub);margin-bottom:20px">You can do this after closing this guide — the setting is always accessible in the top-right Settings panel.</p>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn-primary" onclick="obNext()">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div id="ob-step-2" style="display:none">
+      <h3 style="color:var(--acc-h);margin-bottom:10px">Add your character</h3>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:12px">
+        Click <strong>+ Add Character</strong> in the sidebar and paste your SimC string. The app will auto-fill your name, spec, realm, and region.
+      </p>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:8px"><strong>How to get your SimC string:</strong></p>
+      <ul style="font-size:13px;color:var(--text);line-height:1.9;padding-left:18px;margin-bottom:16px">
+        <li>Install the <strong>SimulationCraft</strong> in-game addon and use <code>/simc</code>, <em>or</em></li>
+        <li>Go to raidbots.com → Top Gear → <strong>Get SimC</strong> button at the top.</li>
+      </ul>
+      <p style="font-size:12px;color:var(--sub);margin-bottom:20px">You can add multiple characters and multiple specs per character.</p>
+      <div style="display:flex;justify-content:space-between">
+        <button class="btn-secondary" onclick="obBack()">← Back</button>
+        <button class="btn-primary" onclick="obNext()">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div id="ob-step-3" style="display:none">
+      <h3 style="color:var(--acc-h);margin-bottom:10px">Auto Lua delivery <span style="font-size:12px;color:var(--sub);font-weight:400">(optional)</span></h3>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:12px">
+        If you use the <strong>Simdragosa WoW addon</strong>, you can have <code>SimdragosaData.lua</code> written to your WoW folder automatically after every sim — no manual file moving.
+      </p>
+      <ol style="font-size:13px;color:var(--text);line-height:1.9;padding-left:18px;margin-bottom:12px">
+        <li>In <strong>Settings</strong>, enable <em>Auto-deliver Lua after sims</em>.</li>
+        <li>Click <strong>Connect folder</strong> and select your <code>Documents\Simdragosa</code> folder.</li>
+        <li>If this is your first time, click the <strong>?</strong> next to "WoW data folder" for the one-time junction setup instructions.</li>
+      </ol>
+      <p style="font-size:12px;color:var(--sub);margin-bottom:20px">This requires Chrome or Edge. You can skip this step and use the manual download button instead.</p>
+      <div style="display:flex;justify-content:space-between">
+        <button class="btn-secondary" onclick="obBack()">← Back</button>
+        <button class="btn-primary" onclick="obFinish()">Get started!</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let chars = [];
+let editingId = null;
+let pollTimer = null;
+let _simsWereRunning = false;  // detect running→done transition for auto-download
+
+const charListOpen = new Set();  // Characters panel
+const selectorOpen = new Set();  // Run selector
+const jobGroupOpen = new Set();  // Results panel groups
+const jobLogOpen   = new Set();  // Per-job log panels
+
+const DIFF_ORDER = [
+  'raid-normal','raid-heroic','raid-mythic',
+  'dungeon-mythic10','dungeon-mythic-weekly10',
+];
+
+/** Group an array of chars by lowercased name → Map<name, char[]> */
+function groupByName(arr) {
+  const map = new Map();
+  for (const c of arr) {
+    const key = c.name.toLowerCase();
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(c);
+  }
+  return map;
+}
+
+// ── Auto-deliver preference ───────────────────────────────────────────────────
+function loadAutoDeliverPref() {
+  const v = localStorage.getItem('simdragosa_auto_deliver');
+  document.getElementById('auto-deliver-toggle').checked = v === 'true';
+}
+function saveAutoDeliverPref() {
+  localStorage.setItem('simdragosa_auto_deliver', document.getElementById('auto-deliver-toggle').checked);
+}
+
+// ── Onboarding ────────────────────────────────────────────────────────────────
+let _obStep = 1;
+const _OB_STEPS = 3;
+
+function obNext() {
+  if (_obStep < _OB_STEPS) { _obStep++; _obRender(); }
+}
+function obBack() {
+  if (_obStep > 1) { _obStep--; _obRender(); }
+}
+function obFinish() {
+  localStorage.setItem('simdragosa_onboarding_done_' + _CURRENT_USER, 'true');
+  document.getElementById('onboarding-backdrop').style.display = 'none';
+}
+function _obRender() {
+  for (let i = 1; i <= _OB_STEPS; i++) {
+    document.getElementById('ob-step-' + i).style.display = i === _obStep ? '' : 'none';
+  }
+  const dots = document.querySelectorAll('.ob-dot');
+  dots.forEach((d, i) => d.classList.toggle('ob-dot-active', i + 1 === _obStep));
+}
+function initOnboarding() {
+  if (!localStorage.getItem('simdragosa_onboarding_done_' + _CURRENT_USER)) {
+    _obStep = 1;
+    _obRender();
+    document.getElementById('onboarding-backdrop').style.display = 'flex';
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadChars();
+  await refreshSettings();
+  await loadRaidsid();
+  await initWowFolderStatus();
+  loadAutoDeliverPref();
+  const s = await (await fetch('/api/status')).json();
+  window._lastStatus = s;
+  renderActiveJobs(s.active_jobs || []);
+  renderResults(s.results || []);
+  if (s.running) startPolling();
+  initOnboarding();
+});
+
+// ── Characters ────────────────────────────────────────────────────────────────
+async function loadChars() {
+  const r = await fetch('/api/characters');
+  chars = await r.json();
+  renderCharList();
+  renderSelector();
+}
+
+const GEAR_SLOTS = new Set(['head','neck','shoulder','back','chest','wrist','hands','waist','legs','feet','finger1','finger2','trinket1','trinket2','main_hand','off_hand']);
+
+function avgIlvl(simc) {
+  if (!simc) return null;
+  const ilvls = [];
+  for (const line of simc.split(/\r?\n/)) {
+    const slotMatch = line.match(/^(\w+)\s*=/);
+    if (!slotMatch || !GEAR_SLOTS.has(slotMatch[1])) continue;
+    const ilvlMatch = line.match(/\bilvl\s*=\s*(\d+)/);
+    if (ilvlMatch) ilvls.push(parseInt(ilvlMatch[1]));
+  }
+  if (!ilvls.length) return null;
+  return Math.round(ilvls.reduce((a, b) => a + b, 0) / ilvls.length);
+}
+
+function renderCharList() {
+  const el = document.getElementById('chars-list');
+  if (!chars.length) {
+    el.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:8px 8px 4px">No characters yet.</div>';
+    return;
+  }
+
+  const groups = groupByName(chars);
+  let html = '';
+
+  for (const [key, group] of groups) {
+    const representative = group[0];
+    const isOpen = charListOpen.has(key);
+    const multi = group.length > 1;
+
+    if (!multi) {
+      // Single spec — render flat card (no expand)
+      const c = representative;
+      const ilvl = c.ilvl || avgIlvl(c.simc_string);
+      const ilvlBadge = ilvl
+        ? ` <span style="color:var(--sub);font-size:11px;font-weight:400">· ${ilvl} ilvl</span>`
+        : ` <span id="ilvl-${c.id}" style="color:var(--sub);font-size:11px;font-weight:400"></span>`;
+      html += `
+      <div class="single-char">
+        <div class="char-card">
+          <div class="char-info">
+            <div class="char-name">${c.name} <span style="color:var(--accent);font-size:12px">${c.spec}</span>${ilvlBadge}</div>
+            <div class="char-meta">${c.region.toUpperCase()} / ${c.realm}</div>
+          </div>
+          <button class="icon-btn" title="Edit" onclick="openModal('${c.id}')">✎</button>
+          <button class="icon-btn del" title="Delete" onclick="deleteChar('${c.id}')">✕</button>
+        </div>
+      </div>`;
+    } else {
+      // Multiple specs — grouped with expand toggle
+      const specsLabel = group.map(c => `<span style="color:var(--accent);font-size:11px">${c.spec}</span>`).join(' · ');
+      const arrowClass = isOpen ? 'expand-arrow open' : 'expand-arrow';
+      html += `
+      <div class="char-group">
+        <div class="char-group-header ${isOpen ? 'open' : ''}" onclick="toggleCharGroup('${key}')">
+          <span class="${arrowClass}">▶</span>
+          <div class="char-info" style="flex:1;min-width:0">
+            <div class="char-name">${representative.name} <span style="color:var(--sub);font-size:11px;font-weight:400">${group.length} specs</span></div>
+            <div style="font-size:11px;margin-top:2px">${specsLabel}</div>
+          </div>
+          <span style="color:var(--sub);font-size:11px">${representative.region.toUpperCase()} / ${representative.realm}</span>
+        </div>
+        ${isOpen ? `<div class="char-group-body">${group.map(c => {
+          const ilvl = c.ilvl || avgIlvl(c.simc_string);
+          const ilvlBadge = ilvl
+            ? ` <span style="color:var(--sub);font-size:11px;font-weight:400">· ${ilvl} ilvl</span>`
+            : ` <span id="ilvl-${c.id}" style="color:var(--sub);font-size:11px;font-weight:400"></span>`;
+          return `<div class="char-card">
+            <div class="char-info">
+              <div class="char-name"><span style="color:var(--accent);font-size:12px">${c.spec}</span>${ilvlBadge}</div>
+            </div>
+            <button class="icon-btn" title="Edit" onclick="openModal('${c.id}')">✎</button>
+            <button class="icon-btn del" title="Delete" onclick="deleteChar('${c.id}')">✕</button>
+          </div>`;
+        }).join('')}</div>` : ''}
+      </div>`;
+    }
+  }
+
+  el.innerHTML = html;
+
+  // Fetch ilvl from armory for characters that don't have it cached yet
+  chars.forEach(c => {
+    if (c.ilvl || avgIlvl(c.simc_string)) return;
+    fetch(`/api/ilvl/${c.id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d.ilvl) return;
+        c.ilvl = d.ilvl;
+        const span = document.getElementById(`ilvl-${c.id}`);
+        if (span) span.textContent = `· ${d.ilvl} ilvl`;
+      })
+      .catch(() => {});
+  });
+}
+
+function toggleCharGroup(key) {
+  if (charListOpen.has(key)) charListOpen.delete(key);
+  else charListOpen.add(key);
+  renderCharList();
+}
+
+const HEALER_SPEC_IDS = new Set([65, 105, 256, 257, 264, 270, 1468]);
+function isHealerChar(spec_id) { return HEALER_SPEC_IDS.has(Number(spec_id)); }
+
+const DPS_DIFFS = [
+  { value: 'raid-normal',             label: 'Normal',     checked: false },
+  { value: 'raid-heroic',             label: 'Heroic',     checked: true  },
+  { value: 'raid-mythic',             label: 'Mythic',     checked: true  },
+  { value: 'dungeon-mythic10',        label: 'M+10',       checked: false },
+  { value: 'dungeon-mythic-weekly10', label: 'M+10 Vault', checked: false },
+];
+
+function diffGroupHtml(id, spec_id) {
+  if (isHealerChar(spec_id)) {
+    return `<span style="color:var(--sub);font-size:12px">QE Upgrade Finder (Heroic + Mythic)</span>`;
+  }
+  return DPS_DIFFS.map(d => `
+    <label class="diff-cb">
+      <input type="checkbox" class="diff-cb-diff" data-id="${id}" data-diff="${d.value}"
+        ${d.checked ? 'checked' : ''} onchange="updateGoBtn()">
+      ${d.label}
+    </label>`).join('');
+}
+
+function renderSelector() {
+  const el = document.getElementById('char-selector');
+  if (!chars.length) {
+    el.innerHTML = '<div class="empty-note">Add characters on the left to get started.</div>';
+    updateGoBtn();
+    return;
+  }
+
+  const groups = groupByName(chars);
+  let html = '';
+
+  for (const [key, group] of groups) {
+    const isOpen = selectorOpen.has(key);
+    const multi = group.length > 1;
+    const arrowClass = isOpen ? 'expand-arrow open' : 'expand-arrow';
+    const rep = group[0];
+
+    if (!multi) {
+      // Single spec — flat row (no grouping UI)
+      const c = rep;
+      html += `
+      <div class="selector-row">
+        <label>
+          <input type="checkbox" class="char-cb" data-id="${c.id}" onchange="updateGoBtn()">
+          <span><strong>${c.name}</strong> – ${c.spec} <span style="color:var(--sub);font-size:12px">(${c.region.toUpperCase()}/${c.realm})</span></span>
+        </label>
+        <div class="diff-group">${diffGroupHtml(c.id, c.spec_id)}</div>
+      </div>`;
+    } else {
+      // Multi-spec group
+      const specsPreview = group.map(c => `<span style="color:var(--accent)">${c.spec}</span>`).join(' · ');
+      html += `
+      <div class="sel-group">
+        <div class="sel-group-header" onclick="toggleSelectorGroup('${key}')">
+          <span class="${arrowClass}">▶</span>
+          <input type="checkbox" class="group-cb" data-group="${key}" onclick="event.stopPropagation()" onchange="onGroupCbChange('${key}')">
+          <label style="flex:1;cursor:pointer;pointer-events:none">
+            <strong>${rep.name}</strong>
+            <span style="color:var(--sub);font-size:12px"> (${rep.region.toUpperCase()}/${rep.realm})</span>
+            <span style="font-size:11px;margin-left:6px">${specsPreview}</span>
+          </label>
+        </div>
+        ${isOpen ? `<div class="sel-group-specs">${group.map(c => `
+          <div class="selector-row">
+            <label>
+              <input type="checkbox" class="char-cb" data-id="${c.id}" data-group="${key}" onchange="onSpecCbChange('${key}')">
+              <span style="color:var(--accent)">${c.spec}</span>
+            </label>
+            <div class="diff-group">${diffGroupHtml(c.id, c.spec_id)}</div>
+          </div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    }
+  }
+
+  el.innerHTML = html;
+  updateGoBtn();
+}
+
+function toggleSelectorGroup(key) {
+  if (selectorOpen.has(key)) selectorOpen.delete(key);
+  else selectorOpen.add(key);
+  renderSelector();
+}
+
+/** Parent group checkbox toggled → check/uncheck all specs in that group */
+function onGroupCbChange(key) {
+  const groupCb = document.querySelector(`.group-cb[data-group="${key}"]`);
+  const checked = groupCb.checked;
+  document.querySelectorAll(`.char-cb[data-group="${key}"]`).forEach(cb => { cb.checked = checked; });
+  updateGoBtn();
+}
+
+/** Individual spec checkbox changed → sync parent group checkbox state */
+function onSpecCbChange(key) {
+  const specCbs = [...document.querySelectorAll(`.char-cb[data-group="${key}"]`)];
+  const groupCb = document.querySelector(`.group-cb[data-group="${key}"]`);
+  if (!groupCb) { updateGoBtn(); return; }
+  const allChecked  = specCbs.every(cb => cb.checked);
+  const noneChecked = specCbs.every(cb => !cb.checked);
+  groupCb.checked       = allChecked;
+  groupCb.indeterminate = !allChecked && !noneChecked;
+  updateGoBtn();
+}
+
+function toggleSelectAll() {
+  const charCbs  = [...document.querySelectorAll('.char-cb')];
+  const groupCbs = [...document.querySelectorAll('.group-cb')];
+  const allChecked = charCbs.every(cb => cb.checked);
+  const newState = !allChecked;
+  charCbs.forEach(cb => { cb.checked = newState; });
+  groupCbs.forEach(cb => { cb.checked = newState; cb.indeterminate = false; });
+  document.getElementById('select-all-btn').textContent = newState ? 'Deselect All' : 'Select All';
+  updateGoBtn();
+}
+
+function updateGoBtn() {
+  const anySelected = [...document.querySelectorAll('.char-cb:checked')].some(cb => {
+    const id   = cb.dataset.id;
+    const char = chars.find(c => c.id === id);
+    if (isHealerChar(char?.spec_id)) return true;  // healers always run QE — no diff selection needed
+    return [...document.querySelectorAll(`.diff-cb-diff[data-id="${id}"]`)].some(d => d.checked);
+  });
+  const anyGroupSelected = [...document.querySelectorAll('.group-cb:checked')].length > 0;
+  document.getElementById('go-btn').disabled = !(anySelected || anyGroupSelected);
+
+  const charCbs = [...document.querySelectorAll('.char-cb')];
+  const btn = document.getElementById('select-all-btn');
+  if (btn && charCbs.length) {
+    btn.textContent = charCbs.every(cb => cb.checked) ? 'Deselect All' : 'Select All';
+  }
+}
+
+// ── SimC parser ───────────────────────────────────────────────────────────────
+const SPEC_IDS = {
+  mage:         { arcane:62, fire:63, frost:64 },
+  warrior:      { arms:71, fury:72, protection:73 },
+  paladin:      { holy:65, protection:66, retribution:70 },
+  hunter:       { 'beast_mastery':253, marksmanship:254, survival:255 },
+  rogue:        { assassination:259, outlaw:260, subtlety:261 },
+  priest:       { discipline:256, holy:257, shadow:258 },
+  'death_knight':{ blood:250, frost:251, unholy:252 },
+  shaman:       { elemental:262, enhancement:263, restoration:264 },
+  warlock:      { affliction:265, demonology:266, destruction:267 },
+  monk:         { brewmaster:268, windwalker:269, mistweaver:270 },
+  druid:        { balance:102, feral:103, guardian:104, restoration:105 },
+  'demon_hunter':{ havoc:577, vengeance:581, devourer:1480 },
+  evoker:       { devastation:1467, preservation:1468, augmentation:1473 },
+  'death knight':{ blood:250, frost:251, unholy:252 },
+  'demon hunter':{ havoc:577, vengeance:581, devourer:1480 },
+};
+
+function parseSimc() {
+  const raw = document.getElementById('f-simc').value;
+  if (!raw.trim()) return;
+
+  const lines = raw.split(/\r?\n/);
+  let charName = null, charClass = null, region = null, realm = null, spec = null;
+
+  // Find class identifier line (e.g. demon_hunter="Name") — skip copy= / profileset= lines
+  for (const line of lines) {
+    const m = line.match(/^(\w[\w\s]*)="([^"]+)"/);
+    if (m) {
+      const cls = m[1].trim().toLowerCase();
+      const clsNorm = cls.replace(/ /g, '_');
+      if (SPEC_IDS[cls] || SPEC_IDS[clsNorm]) {
+        charClass = clsNorm;
+        charName = m[2].trim();
+        break;
+      }
+    }
+  }
+
+  for (const line of lines) {
+    const kv = line.match(/^([\w]+)\s*=\s*(.+)/);
+    if (!kv) continue;
+    const [, key, val] = kv;
+    if (key === 'region') region = val.trim().toLowerCase();
+    if (key === 'server') realm  = val.trim().toLowerCase();
+    if (key === 'spec')   spec   = val.trim().toLowerCase();
+  }
+
+  if (charName) document.getElementById('f-name').value = charName;
+  if (region)   document.getElementById('f-region').value = region;
+  if (realm)    document.getElementById('f-realm').value = realm;
+
+  if (spec) {
+    // Capitalise first letter for display
+    const specDisplay = spec.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    document.getElementById('f-spec').value = specDisplay;
+
+    // Look up spec ID
+    const classSpecs = SPEC_IDS[charClass] ?? SPEC_IDS[charClass?.replace('_', ' ')];
+    const specId = classSpecs?.[spec] ?? classSpecs?.[spec.replace(/ /g, '_')];
+    if (specId) {
+      document.getElementById('f-spec-id').value = specId;
+      // Only set loot spec if it hasn't been pre-filled (preserves custom loot specs on edit)
+      if (!document.getElementById('f-loot-spec-id').value) {
+        document.getElementById('f-loot-spec-id').value = specId;
+      }
+    }
+  }
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openModal(id = null) {
+  editingId = id;
+  document.getElementById('modal-title').textContent = id ? 'Edit Character' : 'Add Character';
+  const c = id ? chars.find(x => x.id === id) : null;
+  document.getElementById('f-simc').value         = c?.simc_string   ?? '';
+  document.getElementById('f-name').value         = c?.name          ?? '';
+  document.getElementById('f-spec').value         = c?.spec          ?? '';
+  document.getElementById('f-region').value       = c?.region        ?? 'eu';
+  document.getElementById('f-realm').value        = c?.realm         ?? '';
+  document.getElementById('f-spec-id').value      = c?.spec_id       ?? '';
+  document.getElementById('f-loot-spec-id').value = c?.loot_spec_id  ?? '';
+  document.getElementById('f-crafted-stats').value = c?.crafted_stats ?? '36/49';
+  document.getElementById('f-exclude-updates').checked = c?.exclude_from_item_updates ?? false;
+  document.querySelectorAll('#modal-bg details').forEach(d => d.removeAttribute('open'));
+  // Re-derive spec_id from the stored SimC string so a stale DB value can't persist silently
+  parseSimc();
+  document.getElementById('modal-bg').classList.add('open');
+  document.getElementById('f-name').focus();
+}
+
+function closeModal() {
+  document.getElementById('modal-bg').classList.remove('open');
+  editingId = null;
+}
+
+async function saveChar() {
+  const specId = parseInt(document.getElementById('f-spec-id').value);
+  const char = {
+    name:          document.getElementById('f-name').value.trim(),
+    spec:          document.getElementById('f-spec').value.trim(),
+    region:        document.getElementById('f-region').value,
+    realm:         document.getElementById('f-realm').value.trim(),
+    spec_id:       specId || 63,
+    loot_spec_id:  parseInt(document.getElementById('f-loot-spec-id').value) || specId || 63,
+    crafted_stats:              document.getElementById('f-crafted-stats').value.trim() || '36/49',
+    simc_string:                document.getElementById('f-simc').value.trim(),
+    exclude_from_item_updates:  document.getElementById('f-exclude-updates').checked,
+  };
+  if (!char.name || !char.spec || !char.simc_string) {
+    showToast('Name, spec and SimC string are required', true);
+    return;
+  }
+
+  // Validate SimC string matches the profile name and spec
+  const simcLines = char.simc_string.split(/\r?\n/);
+  let simcName = null, simcSpec = null;
+  for (const line of simcLines) {
+    const m = line.match(/^[\w][\w\s]*="([^"]+)"/);
+    if (m) { simcName = m[1].trim(); break; }
+  }
+  for (const line of simcLines) {
+    const kv = line.match(/^spec\s*=\s*(\S+)/);
+    if (kv) { simcSpec = kv[1].trim().toLowerCase(); break; }
+  }
+  if (simcName && simcName.toLowerCase() !== char.name.toLowerCase()) {
+    showToast(`SimC mismatch: string is for "${simcName}", profile is "${char.name}"`, true);
+    return;
+  }
+  if (simcSpec && simcSpec !== char.spec.toLowerCase()) {
+    showToast(`SimC mismatch: string is ${simcSpec}, profile spec is ${char.spec}`, true);
+    return;
+  }
+
+  const resp = await fetch('/api/characters', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(char) });
+  const result = await resp.json();
+  closeModal();
+  await loadChars();
+  if (result.propagated?.length) {
+    showToast(`Gear synced to: ${result.propagated.join(', ')}`);
+  }
+}
+
+async function deleteChar(id) {
+  if (!confirm('Delete this character?')) return;
+  await fetch(`/api/characters/${id}`, { method: 'DELETE' });
+  await loadChars();
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+async function refreshSettings() {
+  const r = await fetch('/api/raidsid');
+  const d = await r.json();
+  const ready = !!(d.raidsid && d.raidsid.length > 0);
+  const badge = document.getElementById('sim-ready-badge');
+  const label = document.getElementById('sim-ready-label');
+  badge.className = ready ? 'ready' : 'not-ready';
+  badge.title = ready ? 'Sim ready' : 'Click to open Settings and add your Raidbots session ID';
+  badge.onclick = ready ? null : toggleSettings;
+  label.textContent = ready ? 'Sim ready' : 'No raidsid';
+}
+
+function toggleSettings() {
+  document.getElementById('settings-panel').classList.toggle('open');
+}
+
+async function saveSettings() {
+  const raidsid = document.getElementById('raidsid-input').value.trim();
+  if (!raidsid) return;
+  await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ raidsid }) });
+  document.getElementById('raidsid-input').value = '';
+  document.getElementById('settings-panel').classList.remove('open');
+  await refreshSettings();
+  showToast('Settings saved');
+}
+
+function openRaidsidHelp() {
+  const el = document.getElementById('raidsid-help-backdrop');
+  el.style.display = 'flex';
+}
+function closeRaidsidHelp() {
+  document.getElementById('raidsid-help-backdrop').style.display = 'none';
+}
+
+document.getElementById('raidsid-help-backdrop').addEventListener('click', function(e) {
+  if (e.target === this) closeRaidsidHelp();
+});
+
+async function loadRaidsid() {
+  try {
+    const r = await fetch('/api/raidsid');
+    const d = await r.json();
+    if (d.raidsid) document.getElementById('raidsid-input').value = d.raidsid;
+  } catch(e) {}
+}
+async function saveRaidsid() {
+  const val = document.getElementById('raidsid-input').value.trim();
+  await fetch('/api/raidsid', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({raidsid: val}) });
+  await refreshSettings();
+  showToast('Raidbots session ID saved');
+}
+
+// ── File System Access API — WoW folder auto-write ────────────────────────────
+const _FS_SUPPORTED = 'showDirectoryPicker' in window;
+
+function _idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('simdragosa_fs', 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore('handles');
+    r.onsuccess = e => res(e.target.result);
+    r.onerror   = e => rej(e.target.error);
+  });
+}
+async function _idbPut(key, val) {
+  const db = await _idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').put(val, key);
+    tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
+  });
+}
+async function _idbGet(key) {
+  const db = await _idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('handles', 'readonly');
+    const r  = tx.objectStore('handles').get(key);
+    r.onsuccess = e => res(e.target.result ?? null);
+    r.onerror   = e => rej(e.target.error);
+  });
+}
+async function _idbDel(key) {
+  const db = await _idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').delete(key);
+    tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
+  });
+}
+
+async function _updateWowFolderUI(handle) {
+  const nameEl    = document.getElementById('wow-folder-name');
+  const btnEl     = document.getElementById('wow-connect-btn');
+  const dlBtn     = document.getElementById('wow-download-btn');
+  if (!_FS_SUPPORTED) {
+    document.getElementById('wow-fs-unsupported').style.display = '';
+    document.getElementById('wow-folder-row').style.display = 'none';
+    return;
+  }
+  if (!handle) {
+    nameEl.textContent = 'Not connected'; nameEl.style.color = 'var(--sub)';
+    btnEl.textContent  = 'Connect folder'; btnEl.onclick = connectWowFolder;
+    dlBtn.textContent  = '⬇ Download SimdragosaData.lua';
+    return;
+  }
+  const perm = await handle.queryPermission({ mode: 'readwrite' }).catch(() => 'denied');
+  if (perm === 'granted') {
+    nameEl.textContent = '✓ ' + handle.name; nameEl.style.color = 'var(--green)';
+    btnEl.textContent  = 'Change'; btnEl.onclick = connectWowFolder;
+    dlBtn.textContent  = '⬇ Write to WoW folder';
+  } else {
+    nameEl.textContent = '⚠ ' + handle.name; nameEl.style.color = 'var(--yellow)';
+    btnEl.textContent  = 'Reconnect'; btnEl.onclick = reconnectWowFolder;
+    dlBtn.textContent  = '⬇ Download SimdragosaData.lua';
+  }
+}
+
+async function initWowFolderStatus() {
+  const handle = await _idbGet('wow_addon_dir').catch(() => null);
+  await _updateWowFolderUI(handle);
+}
+
+function openFolderHelp() {
+  const el = document.getElementById('folder-help-backdrop');
+  el.style.display = 'flex';
+}
+
+function closeFolderHelp() {
+  const el = document.getElementById('folder-help-backdrop');
+  el.style.display = 'none';
+}
+
+async function connectWowFolder() {
+  if (!_FS_SUPPORTED) return;
+  try {
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'wow-addon' });
+    await _idbPut('wow_addon_dir', handle);
+    await _updateWowFolderUI(handle);
+    showToast('WoW folder connected — will write automatically after each sim');
+  } catch (e) {
+    if (e.name !== 'AbortError') showToast('Could not connect folder', true);
+  }
+}
+
+async function reconnectWowFolder() {
+  if (!_FS_SUPPORTED) return;
+  const handle = await _idbGet('wow_addon_dir').catch(() => null);
+  if (!handle) { connectWowFolder(); return; }
+  try {
+    await handle.requestPermission({ mode: 'readwrite' });
+    await _updateWowFolderUI(handle);
+    showToast('WoW folder access restored');
+  } catch (e) {
+    showToast('Could not restore folder access', true);
+  }
+}
+
+// Write SimdragosaData.lua directly to the WoW folder if connected and permitted.
+// Returns 'written', 'no-permission', or 'not-connected'.
+async function _deliverLua() {
+  if (_FS_SUPPORTED) {
+    const handle = await _idbGet('wow_addon_dir').catch(() => null);
+    if (handle) {
+      const perm = await handle.queryPermission({ mode: 'readwrite' }).catch(() => 'denied');
+      if (perm === 'granted') {
+        try {
+          const content = await (await fetch('/api/tooltip-export')).text();
+          const fh = await handle.getFileHandle('SimdragosaData.lua', { create: true });
+          const w  = await fh.createWritable();
+          await w.write(content); await w.close();
+          return 'written';
+        } catch (e) { console.error('WoW folder write failed:', e); }
+      } else {
+        return 'no-permission';
+      }
+    }
+  }
+  // Fallback: trigger browser download
+  const a = document.createElement('a');
+  a.href = '/api/tooltip-export'; a.download = 'SimdragosaData.lua'; a.click();
+  return 'downloaded';
+}
+
+async function downloadTooltipLua() {
+  const result = await _deliverLua();
+  if (result === 'written')       showToast('SimdragosaData.lua written to WoW folder ✓');
+  if (result === 'no-permission') showToast('WoW folder needs reconnect — use Settings', true, 4000);
+}
+
+// ── Run ───────────────────────────────────────────────────────────────────────
+async function startRun() {
+  const selections = [];
+  const seenIds = new Set();
+
+  // Collect from visible individual spec checkboxes
+  document.querySelectorAll('.char-cb:checked').forEach(cb => {
+    const id   = cb.dataset.id;
+    if (seenIds.has(id)) return;
+    seenIds.add(id);
+    const char  = chars.find(c => c.id === id);
+    const diffs = [];
+    if (isHealerChar(char?.spec_id)) {
+      diffs.push('raid-heroic');  // QE handles both difficulties in one run
+    } else {
+      document.querySelectorAll(`.diff-cb-diff[data-id="${id}"]:checked`).forEach(d => {
+        diffs.push(d.dataset.diff);
+      });
+    }
+    if (diffs.length) selections.push({ char_id: id, difficulties: diffs });
+  });
+
+  // Collect from collapsed group checkboxes (specs not rendered in DOM)
+  document.querySelectorAll('.group-cb:checked').forEach(groupCb => {
+    const key        = groupCb.dataset.group;
+    const groupChars = chars.filter(c => c.name.toLowerCase() === key);
+    for (const c of groupChars) {
+      if (seenIds.has(c.id)) continue;
+      seenIds.add(c.id);
+      const diffs = isHealerChar(c.spec_id)
+        ? ['raid-heroic']
+        : DPS_DIFFS.filter(d => d.checked).map(d => d.value);
+      selections.push({ char_id: c.id, difficulties: diffs });
+    }
+  });
+
+  if (!selections.length) { showToast('Select at least one character', true); return; }
+
+  const r = await fetch('/api/run', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ selections }) });
+  const d = await r.json();
+  if (!r.ok) { showToast(d.error, true); return; }
+
+  startPolling();
+}
+
+function startPolling() {
+  _simsWereRunning = true;
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(pollStatus, 1500);
+}
+
+async function pollStatus() {
+  const r = await fetch('/api/status');
+  const d = await r.json();
+  window._lastStatus = d;
+
+  renderActiveJobs(d.active_jobs || []);
+  renderResults(d.results || []);
+
+  if (!d.running) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+    if (_simsWereRunning) {
+      _simsWereRunning = false;
+      if (localStorage.getItem('simdragosa_auto_deliver') === 'true') {
+        const result = await _deliverLua();
+        showToast(
+          result === 'written'       ? 'Sims done — SimdragosaData.lua written to WoW folder ✓' :
+          result === 'no-permission' ? 'Sims done — reconnect WoW folder in Settings' :
+                                       'Sims done — SimdragosaData.lua downloaded',
+          result === 'no-permission', 4000
+        );
+      } else {
+        showToast('Sims done', false, 3000);
+      }
+    }
+  }
+}
+
+// ── Active Strip ──────────────────────────────────────────────────────────────
+function renderActiveJobs(activeJobs) {
+  const strip = document.getElementById('active-strip');
+  if (!activeJobs || !activeJobs.length) {
+    strip.style.display = 'none';
+    return;
+  }
+  strip.style.display = '';
+
+  const now = Date.now() / 1000;
+  let html = '';
+  for (const j of activeJobs) {
+    const isLogOpen = jobLogOpen.has(j.id);
+    const elapsed = j.started_at ? formatElapsed(now - j.started_at) : '';
+    const logContent = (j.log_lines || []).join('\n');
+    const hasLog = logContent.trim().length > 0;
+    html += `
+    <div class="active-job-row">
+      <div class="active-job-main">
+        <div class="spinner"></div>
+        <span class="job-label" style="flex:1">${j.label}</span>
+        <span class="badge badge-${j.status}">${statusLabel(j.status)}</span>
+        ${elapsed ? `<span class="elapsed">${elapsed}</span>` : ''}
+        ${hasLog ? `<button class="job-log-toggle" onclick="toggleJobLog('${j.id}')">${isLogOpen ? '▼' : '▶'} Log</button>` : ''}
+      </div>
+      ${hasLog && isLogOpen ? `<div class="job-log-box">${escHtml(logContent)}</div>` : ''}
+    </div>`;
+  }
+  document.getElementById('active-jobs-list').innerHTML = html;
+}
+
+// ── Results ───────────────────────────────────────────────────────────────────
+function renderResults(results) {
+  const el = document.getElementById('jobs-list');
+  if (!results || !results.length) {
+    el.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:4px 0">No completed sims yet.</div>';
+    return;
+  }
+
+  // Group by char_id, track most recently completed per group
+  const groupMap = new Map();
+  for (const entry of results) {
+    const charId = entry.latest.char_id;
+    const displayName = entry.latest.label.split('\u2013')[0].trim();
+    if (!groupMap.has(charId)) groupMap.set(charId, { displayName, entries: [], maxCompleted: 0 });
+    const grp = groupMap.get(charId);
+    grp.entries.push(entry);
+    const t = entry.latest.completed_at || 0;
+    if (t > grp.maxCompleted) grp.maxCompleted = t;
+  }
+
+  // Most recently completed group first
+  const sortedGroups = [...groupMap.entries()].sort((a, b) => b[1].maxCompleted - a[1].maxCompleted);
+
+  let html = '';
+  for (const [charId, grp] of sortedGroups) {
+    // Difficulties in fixed order, then by build_label
+    grp.entries.sort((a, b) => {
+      const ai = DIFF_ORDER.indexOf(a.latest.difficulty);
+      const bi = DIFF_ORDER.indexOf(b.latest.difficulty);
+      const as_ = ai === -1 ? 999 : ai;
+      const bs_ = bi === -1 ? 999 : bi;
+      if (as_ !== bs_) return as_ - bs_;
+      return (a.latest.build_label || '').localeCompare(b.latest.build_label || '');
+    });
+
+    const isOpen = jobGroupOpen.has(charId);
+    const arrowClass = isOpen ? 'expand-arrow open' : 'expand-arrow';
+    const doneCount = grp.entries.filter(e => e.latest.status === 'done').length;
+    const failCount = grp.entries.filter(e => e.latest.status === 'failed').length;
+    const total = grp.entries.length;
+    const aggStatus = failCount > 0 ? 'failed' : 'done';
+    const aggBadge = failCount > 0
+      ? `${doneCount}/${total} Done, ${failCount} Failed`
+      : `${doneCount}/${total} Done`;
+
+    if (grp.entries.length === 1) {
+      html += jobResultRowHtml(grp.entries[0]);
+    } else {
+      html += `
+      <div class="job-group">
+        <div class="job-group-header" onclick="toggleJobGroup('${charId}')">
+          <span class="${arrowClass}">▶</span>
+          <span class="job-label">${grp.displayName}</span>
+          <span class="badge badge-${aggStatus}">${aggBadge}</span>
+        </div>
+        ${isOpen ? `<div class="job-group-body">${grp.entries.map(e => jobResultRowHtml(e)).join('')}</div>` : ''}
+      </div>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+function jobResultRowHtml(entry) {
+  const j = entry.latest;
+  const lastSuccess = entry.last_success;
+  const isLogOpen = jobLogOpen.has(j.id);
+
+  let logLines = [...(j.log_lines || [])];
+  if (j.status === 'failed' && lastSuccess && lastSuccess.url) {
+    logLines.push(`Last successful: ${lastSuccess.url}`);
+  }
+  const logContent = logLines.join('\n');
+  const hasLog = logContent.trim().length > 0;
+
+  return `
+  <div class="result-row">
+    <div class="result-row-main">
+      <span class="job-label">${j.label}</span>
+      <span class="badge badge-${j.status}">${statusLabel(j.status)}</span>
+      ${j.sim_id && j.status === 'done' ? `<img class="sim-preview" src="https://www.raidbots.com/simbot/report/${j.sim_id}/preview.png" alt="preview" title="Sim preview" onerror="this.style.display='none'">` : ''}
+      ${j.url ? `<div class="url-actions">
+        <button class="url-btn" title="Copy link" onclick="copyUrl('${j.url}')">⎘ Copy</button>
+        <a class="url-btn" href="${j.url}" target="_blank" rel="noopener noreferrer">↗ Open</a>
+      </div>` : ''}
+      ${hasLog ? `<button class="job-log-toggle" onclick="toggleJobLog('${j.id}')">${isLogOpen ? '▼' : '▶'} Log</button>` : ''}
+    </div>
+    ${hasLog && isLogOpen ? `<div class="job-log-box">${escHtml(logContent)}</div>` : ''}
+  </div>`;
+}
+
+function toggleJobGroup(key) {
+  if (jobGroupOpen.has(key)) jobGroupOpen.delete(key);
+  else jobGroupOpen.add(key);
+  if (window._lastStatus) renderResults(window._lastStatus.results || []);
+}
+
+function toggleJobLog(jobId) {
+  if (jobLogOpen.has(jobId)) jobLogOpen.delete(jobId);
+  else jobLogOpen.add(jobId);
+  if (window._lastStatus) {
+    renderActiveJobs(window._lastStatus.active_jobs || []);
+    renderResults(window._lastStatus.results || []);
+  }
+}
+
+function statusLabel(s) {
+  return {
+    pending:'Pending', fetching:'Fetching', submitting:'Submitting',
+    running:'Running', done:'Done', failed:'Failed',
+    cancelled:'Cancelled', skipped:'Skipped',
+  }[s] ?? s;
+}
+
+function formatElapsed(secs) {
+  if (secs < 60) return `${Math.floor(secs)}s`;
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}m ${s < 10 ? '0' + s : s}s`;
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function copyUrl(url) {
+  navigator.clipboard.writeText(url).then(() => showToast('URL copied!'));
+}
+
+let toastTimer = null;
+function showToast(msg, err = false, duration = 2500) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = err ? 'var(--red)' : 'var(--green)';
+  t.style.color       = err ? 'var(--red)' : 'var(--green)';
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), duration);
+}
+</script>
+</body>
+</html>
