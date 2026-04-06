@@ -2,10 +2,10 @@ const { app, BrowserWindow, dialog, ipcMain } = require('electron')
 const { findFreePort } = require('./port')
 const { createTray } = require('./tray')
 const { setupAutoUpdater } = require('./updater')
-const { spawn } = require('child_process')
+const { spawn, spawnSync } = require('child_process')
 const path = require('path')
 const http = require('http')
-const Store = require('electron-store') // add to package.json dependencies
+const Store = require('electron-store')
 
 let mainWindow = null
 let backendProcess = null
@@ -14,15 +14,32 @@ const store = new Store()
 const isDev = !app.isPackaged
 
 function getBackendPath() {
-  if (isDev) {
-    return null // use Python directly in dev
-  }
+  if (isDev) return null
   return path.join(process.resourcesPath, 'backend.exe')
+}
+
+// Find the correct Python executable on this machine.
+// Tries: py (Windows launcher), python3, python — in that order.
+function findPython() {
+  const candidates = ['py', 'python3', 'python']
+  for (const cmd of candidates) {
+    try {
+      const result = spawnSync(cmd, ['--version'], { timeout: 3000 })
+      if (result.status === 0) {
+        console.log(`[backend] Using Python executable: ${cmd}`)
+        return cmd
+      }
+    } catch (_) {}
+  }
+  throw new Error(
+    'Python not found. Please install Python from https://python.org and ensure it is on your PATH.'
+  )
 }
 
 function spawnBackend(port) {
   if (isDev) {
-    backendProcess = spawn('python', ['app.py', '--port', String(port)], {
+    const python = findPython()
+    backendProcess = spawn(python, ['app.py', '--port', String(port)], {
       cwd: path.join(__dirname, '..'),
       env: { ...process.env },
       stdio: 'pipe'
@@ -34,8 +51,8 @@ function spawnBackend(port) {
     })
   }
 
-  backendProcess.stdout.on('data', (d) => console.log('[backend]', d.toString()))
-  backendProcess.stderr.on('data', (d) => console.error('[backend]', d.toString()))
+  backendProcess.stdout.on('data', (d) => console.log('[backend]', d.toString().trimEnd()))
+  backendProcess.stderr.on('data', (d) => console.error('[backend]', d.toString().trimEnd()))
   backendProcess.on('exit', (code) => console.log('[backend] exited with code', code))
 }
 
@@ -72,7 +89,6 @@ async function createWindow(port) {
     icon: path.join(__dirname, '..', 'static', 'simdragosa-icon.png')
   })
 
-  // Inject port for preload
   process.env.SIMDRAGOSA_PORT = String(port)
 
   mainWindow.loadURL(`http://127.0.0.1:${port}`)
@@ -80,12 +96,10 @@ async function createWindow(port) {
   createTray(mainWindow, store, app)
   setupAutoUpdater(mainWindow)
 
-  // Save window bounds on resize/move
   const saveBounds = () => store.set('windowBounds', mainWindow.getBounds())
   mainWindow.on('resize', saveBounds)
   mainWindow.on('move', saveBounds)
 
-  // Close to tray, don't quit
   mainWindow.on('close', (e) => {
     if (!app.isQuiting) {
       e.preventDefault()
@@ -113,13 +127,11 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   const { destroyTray } = require('./tray'); destroyTray()
   app.isQuiting = true
-  if (backendProcess) {
-    backendProcess.kill()
-  }
+  if (backendProcess) backendProcess.kill()
 })
 
 app.on('window-all-closed', () => {
   // Do not quit — tray keeps app alive
 })
 
-module.exports = { getBackendPath, waitForBackend }
+module.exports = { getBackendPath, waitForBackend, findPython }
