@@ -1,5 +1,6 @@
 const { Tray, Menu, nativeImage } = require('electron')
 const path = require('path')
+const { checkForUpdatesManually } = require('./updater')
 
 let tray = null
 
@@ -31,6 +32,10 @@ function createTray(mainWindow, store, app) {
           store.set('alwaysOnTop', next)
           tray.setContextMenu(buildMenu())
         }
+      },
+      {
+        label: 'Check for Updates',
+        click: () => checkForUpdatesManually(mainWindow)
       },
       { type: 'separator' },
       {
