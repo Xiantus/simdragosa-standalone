@@ -55,6 +55,16 @@ logging.getLogger("werkzeug").addFilter(
     })()
 )
 
+
+import traceback as _traceback
+
+@app.errorhandler(Exception)
+def _handle_exception(e):
+    tb = _traceback.format_exc()
+    log.error('Unhandled exception:
+%s', tb)
+    return f'<pre style="color:red;padding:20px">{tb}</pre>', 500
+
 REPORT_URL = RAIDBOTS_BASE + "/simbot/report/{sim_id}"
 
 # ---------------------------------------------------------------------------
