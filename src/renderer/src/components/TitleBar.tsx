@@ -1,6 +1,10 @@
 import React from 'react'
 
-export default function TitleBar(): JSX.Element {
+interface Props {
+  onSettingsClick?: () => void
+}
+
+export default function TitleBar({ onSettingsClick }: Props = {}): JSX.Element {
   return (
     <div
       style={{
@@ -48,10 +52,35 @@ export default function TitleBar(): JSX.Element {
         </span>
       </div>
 
+      {/* Settings button */}
+      {onSettingsClick && (
+        <button
+          title="Settings"
+          onClick={onSettingsClick}
+          style={{
+            marginLeft: 'auto',
+            width: 36,
+            height: 36,
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--sub)',
+            cursor: 'pointer',
+            fontSize: 14,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1,
+            WebkitAppRegion: 'no-drag',
+          } as React.CSSProperties}
+        >
+          ⚙
+        </button>
+      )}
+
       {/* Window control buttons */}
       <div
         style={{
-          marginLeft: 'auto',
+          marginLeft: onSettingsClick ? undefined : 'auto',
           display: 'flex',
           zIndex: 1,
         }}
