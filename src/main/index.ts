@@ -161,7 +161,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('setOverlayMode', (_event, enabled: boolean) => {
     store.set('overlayMode', enabled)
     if (enabled) {
-      mainWindow?.setAlwaysOnTop(true, 'floating')
+      mainWindow?.setAlwaysOnTop(false)
       mainWindow?.setSkipTaskbar(true)
       mainWindow?.webContents.send('overlay:changed', true)
       showTriggerWindow()
@@ -264,7 +264,7 @@ app.whenReady().then(() => {
   setupAutoUpdater(mainWindow!)
   if (store.get('alwaysOnTop')) mainWindow!.setAlwaysOnTop(true)
   if (store.get('overlayMode')) {
-    mainWindow!.setAlwaysOnTop(true, 'floating')
+    mainWindow!.setAlwaysOnTop(false)
     mainWindow!.setSkipTaskbar(true)
     showTriggerWindow()
   }

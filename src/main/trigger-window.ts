@@ -136,26 +136,31 @@ export function createTriggerWindow(mainWin: BrowserWindow, store: any): void {
     y: pos.y,
     frame: false,
     transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
+    alwaysOnTop: false,  // regular window — WoW windowed-fullscreen sits below
+    skipTaskbar: true,   // no taskbar entry; lifecycle tied to main window
     resizable: false,
     hasShadow: false,
-    focusable: false,   // don't steal focus from the game
+    focusable: false,    // don't steal keyboard focus from the game
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
     },
   })
 
-  // 'floating' = HWND_TOPMOST on Windows — above WoW but not above other
-  // overlay apps (Archon, Discord, etc.) that use the same level.
-  triggerWin.setAlwaysOnTop(true, 'floating')
   triggerWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildHtml(iconDataUrl()))}`)
   triggerWin.hide() // hidden until overlay mode is active
+
+  // Mirror the main window's minimize/restore so the button vanishes
+  // when the user minimises Simdragosa and reappears when it's restored.
+  mainWin.on('minimize', () => { if (triggerWin?.isVisible()) triggerWin.hide() })
+  mainWin.on('restore',  () => { /* show handled by showTriggerWindow() call site */ })
 }
 
 export function showTriggerWindow(): void {
-  triggerWin?.show()
+  // Only show if the main window is also visible (not minimised)
+  if (_mainWin && !_mainWin.isMinimized() && _mainWin.isVisible()) {
+    triggerWin?.show()
+  }
 }
 
 export function hideTriggerWindow(): void {
@@ -173,10 +178,13 @@ export function registerTriggerIpc(): void {
   ipcMain.on('trigger:click', () => {
     if (!_mainWin) return
     if (_mainWin.isVisible()) {
+      // Hide both — use the tray icon or system taskbar to restore
       _mainWin.hide()
+      triggerWin?.hide()
     } else {
       _mainWin.show()
       _mainWin.focus()
+      triggerWin?.show()
     }
   })
 
