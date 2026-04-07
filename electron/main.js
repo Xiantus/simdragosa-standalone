@@ -91,6 +91,14 @@ async function createWindow(port) {
 
   process.env.SIMDRAGOSA_PORT = String(port)
 
+  // Retry loading if the page fails (e.g. backend not quite ready yet)
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, _desc) => {
+    if (errorCode === -102 || errorCode === -6) { // ERR_CONNECTION_REFUSED / ERR_CONNECTION_RESET
+      console.log('[electron] Page load failed, retrying in 500ms...')
+      setTimeout(() => mainWindow.loadURL(`http://127.0.0.1:${port}`), 500)
+    }
+  })
+
   mainWindow.loadURL(`http://127.0.0.1:${port}`)
   mainWindow.once('ready-to-show', () => mainWindow.show())
   createTray(mainWindow, store, app)
