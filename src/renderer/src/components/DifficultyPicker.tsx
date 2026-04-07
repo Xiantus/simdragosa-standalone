@@ -5,6 +5,7 @@ const DIFFICULTIES = [
   { key: 'raid-heroic', label: 'Heroic' },
   { key: 'raid-mythic', label: 'Mythic' },
   { key: 'dungeon-mythic10', label: 'M+ 10' },
+  { key: 'dungeon-mythic-weekly10', label: 'M+ 10 Vault' },
 ]
 
 interface Props {
