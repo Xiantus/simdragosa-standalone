@@ -22,7 +22,7 @@ const SPECS: Array<{ name: string; id: number }> = [
   { name: 'Elemental', id: 262 }, { name: 'Enhancement', id: 263 }, { name: 'Restoration (Shaman)', id: 264 },
   { name: 'Affliction', id: 265 }, { name: 'Demonology', id: 266 }, { name: 'Destruction', id: 267 },
   { name: 'Brewmaster', id: 268 }, { name: 'Windwalker', id: 269 }, { name: 'Mistweaver', id: 270 },
-  { name: 'Havoc', id: 577 }, { name: 'Vengeance', id: 581 },
+  { name: 'Havoc', id: 577 }, { name: 'Vengeance', id: 581 }, { name: 'Devourer', id: 1480 },
   { name: 'Devastation', id: 1467 }, { name: 'Preservation', id: 1468 }, { name: 'Augmentation', id: 1473 },
 ]
 
