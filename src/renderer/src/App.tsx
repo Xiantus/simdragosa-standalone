@@ -9,7 +9,7 @@ import { useSettingsStore } from './stores/useSettingsStore'
 import './styles/theme.css'
 
 export default function App(): JSX.Element {
-  const { is_configured, raidsid, wow_path, fetchSettings, saveSettings } = useSettingsStore()
+  const { is_configured, raidsid, wow_path, fetchSettings } = useSettingsStore()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [playwrightOpen, setPlaywrightOpen] = useState(false)
   const [playwrightInstalled, setPlaywrightInstalled] = useState(true)
@@ -40,14 +40,14 @@ export default function App(): JSX.Element {
 
       <OnboardingFlow
         isConfigured={is_configured}
-        onComplete={() => saveSettings({ raidsid, wow_path })}
+        onComplete={fetchSettings}
       />
 
       <SettingsPanel
         open={settingsOpen}
         raidsid={raidsid}
         wow_path={wow_path}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => { setSettingsOpen(false); fetchSettings() }}
       />
 
       <PlaywrightInstallModal
