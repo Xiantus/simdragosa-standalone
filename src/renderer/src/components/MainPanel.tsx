@@ -1,14 +1,32 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useJobStore } from '../stores/useJobStore'
+import { useCharacterStore } from '../stores/useCharacterStore'
 import ActiveJobsStrip from './ActiveJobsStrip'
 import ResultRow from './ResultRow'
+import CharacterSelector from './CharacterSelector'
+import DifficultyPicker from './DifficultyPicker'
+import RunButton from './RunButton'
 
 export default function MainPanel(): JSX.Element {
-  const { jobs, running, wireIpcEvents } = useJobStore()
+  const { jobs, running, startSim, cancelJobs, wireIpcEvents } = useJobStore()
+  const { characters } = useCharacterStore()
+
+  const [selectedChars, setSelectedChars] = useState<string[]>([])
+  const [selectedDiffs, setSelectedDiffs] = useState<string[]>(['raid-heroic'])
 
   useEffect(() => {
     return wireIpcEvents()
   }, [])
+
+  const canRun = selectedChars.length > 0 && selectedDiffs.length > 0
+
+  const handleGo = async () => {
+    if (running) {
+      await cancelJobs()
+    } else if (canRun) {
+      await startSim({ character_ids: selectedChars, difficulties: selectedDiffs })
+    }
+  }
 
   const completed = [...jobs]
     .filter((j) => ['done', 'error', 'cancelled'].includes(j.status))
@@ -16,21 +34,27 @@ export default function MainPanel(): JSX.Element {
 
   return (
     <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
-      {/* RunPanel — selections wired in #22 */}
+      {/* RunPanel */}
       <section
         data-testid="run-panel"
         style={{
           padding: '12px 20px', borderBottom: '1px solid var(--border)',
           background: 'var(--surf)', display: 'flex', alignItems: 'center',
-          gap: 12, flexShrink: 0,
+          gap: 16, flexShrink: 0, flexWrap: 'wrap',
         }}
       >
-        <span style={{ color: 'var(--sub)', fontSize: 13 }}>
-          Select characters and difficulties → GO
-        </span>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <CharacterSelector
+            characters={characters}
+            selected={selectedChars}
+            onChange={setSelectedChars}
+          />
+          <DifficultyPicker selected={selectedDiffs} onChange={setSelectedDiffs} />
+        </div>
+        <RunButton disabled={!canRun} running={running} onClick={handleGo} />
       </section>
 
-      {/* Active jobs strip */}
+      {/* Active jobs */}
       <ActiveJobsStrip running={running} jobs={jobs} />
 
       {/* Results */}
