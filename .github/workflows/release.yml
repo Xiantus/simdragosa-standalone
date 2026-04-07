@@ -29,16 +29,16 @@ jobs:
         run: python -m playwright install chromium
         continue-on-error: true
 
-      - name: Build backend.exe with PyInstaller
-        run: pyinstaller backend.spec --clean --noconfirm
+      - name: Build worker.exe with PyInstaller
+        run: pyinstaller worker.spec --clean --noconfirm
 
-      - name: Verify backend.exe was created
+      - name: Verify worker.exe was created
         run: |
-          if (!(Test-Path "dist\backend.exe")) {
-            Write-Error "backend.exe was not created by PyInstaller"
+          if (!(Test-Path "dist\worker.exe")) {
+            Write-Error "worker.exe was not created by PyInstaller"
             exit 1
           }
-          Write-Host "backend.exe size: $((Get-Item dist\backend.exe).Length) bytes"
+          Write-Host "worker.exe size: $((Get-Item dist\worker.exe).Length) bytes"
         shell: pwsh
 
       - name: Set up Node.js
