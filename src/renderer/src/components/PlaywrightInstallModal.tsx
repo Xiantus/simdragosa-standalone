@@ -5,12 +5,13 @@ interface Props {
   onClose: () => void
 }
 
-type Phase = 'idle' | 'installing' | 'done'
+type Phase = 'idle' | 'installing' | 'done' | 'error'
 
 export default function PlaywrightInstallModal({ open, onClose }: Props): JSX.Element | null {
   const [phase, setPhase] = useState<Phase>('idle')
   const [percent, setPercent] = useState(0)
   const [message, setMessage] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
   const unsubRef = useRef<(() => void) | null>(null)
 
   // Reset when modal re-opens
@@ -19,6 +20,7 @@ export default function PlaywrightInstallModal({ open, onClose }: Props): JSX.El
       setPhase('idle')
       setPercent(0)
       setMessage('')
+      setErrorMsg('')
     }
   }, [open])
 
@@ -34,7 +36,8 @@ export default function PlaywrightInstallModal({ open, onClose }: Props): JSX.El
   const handleInstall = async () => {
     setPhase('installing')
     setPercent(0)
-    setMessage('Starting...')
+    setMessage('Starting…')
+    setErrorMsg('')
 
     // Subscribe to progress events
     const unsub = window.api.onPlaywrightProgress((progress) => {
@@ -46,7 +49,12 @@ export default function PlaywrightInstallModal({ open, onClose }: Props): JSX.El
     })
     unsubRef.current = unsub
 
-    await window.api.installPlaywright()
+    try {
+      await window.api.installPlaywright()
+    } catch (err: any) {
+      setPhase('error')
+      setErrorMsg(err?.message ?? String(err))
+    }
   }
 
   const handleClose = () => {
@@ -77,7 +85,24 @@ export default function PlaywrightInstallModal({ open, onClose }: Props): JSX.El
           A one-time browser download (~150 MB) is required.
         </p>
 
-        {phase !== 'idle' && (
+        {phase === 'error' && (
+          <div style={{
+            background: '#3a0000', border: '1px solid #a00', borderRadius: 6,
+            padding: '10px 14px', fontSize: 12, color: '#f88', lineHeight: 1.5,
+          }}>
+            <strong>Error:</strong> {errorMsg || 'Installation failed.'}
+            {errorMsg.toLowerCase().includes('python') && (
+              <div style={{ marginTop: 6, color: 'var(--sub)' }}>
+                Make sure Python 3.10+ is installed from{' '}
+                <strong>python.org</strong> and not the Microsoft Store version.
+                Disable the Python App Execution Aliases in{' '}
+                <em>Settings → Apps → Advanced app settings → App execution aliases</em>.
+              </div>
+            )}
+          </div>
+        )}
+
+        {(phase === 'installing' || phase === 'done') && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div
               role="progressbar"
@@ -113,7 +138,7 @@ export default function PlaywrightInstallModal({ open, onClose }: Props): JSX.El
             </button>
           )}
 
-          {phase === 'idle' && (
+          {(phase === 'idle' || phase === 'error') && (
             <button
               onClick={handleInstall}
               style={{
@@ -122,7 +147,7 @@ export default function PlaywrightInstallModal({ open, onClose }: Props): JSX.El
                 fontSize: 13, fontWeight: 600,
               }}
             >
-              Install
+              {phase === 'error' ? 'Retry' : 'Install'}
             </button>
           )}
 

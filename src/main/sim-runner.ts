@@ -26,13 +26,39 @@ export interface JobSpec {
 const activeWorkers = new Map<string, ChildProcess>()
 
 export function findPython(): string {
-  for (const cmd of ['py', 'python3', 'python']) {
+  // Build candidate list: explicit versioned names + common Windows install paths
+  const candidates: string[] = [
+    'py', 'python3', 'python',
+    'python3.13', 'python3.12', 'python3.11', 'python3.10',
+  ]
+
+  // Add common Windows installation paths
+  const localAppData = process.env['LOCALAPPDATA'] ?? ''
+  const programFiles = process.env['ProgramFiles'] ?? 'C:\\Program Files'
+  for (const ver of ['313', '312', '311', '310']) {
+    candidates.push(`${localAppData}\\Programs\\Python\\Python${ver}\\python.exe`)
+    candidates.push(`${programFiles}\\Python${ver}\\python.exe`)
+  }
+  // Conda / Miniconda
+  const userProfile = process.env['USERPROFILE'] ?? ''
+  for (const dir of ['miniconda3', 'miniconda', 'anaconda3', 'anaconda']) {
+    candidates.push(`${userProfile}\\${dir}\\python.exe`)
+    candidates.push(`C:\\${dir}\\python.exe`)
+  }
+
+  for (const cmd of candidates) {
     try {
-      const r = spawnSync(cmd, ['--version'], { timeout: 3000 })
-      if (r.status === 0) return cmd
+      const r = spawnSync(cmd, ['--version'], { timeout: 3000, stdio: 'pipe' })
+      // Verify it actually responds with "Python X.Y" — rules out Store aliases
+      const out = (r.stdout?.toString() ?? '') + (r.stderr?.toString() ?? '')
+      if (r.status === 0 && /Python \d/.test(out)) return cmd
     } catch (_) {}
   }
-  return 'py'
+
+  // Last resort: throw so the caller surfaces a clear error
+  throw new Error(
+    'Python not found. Install Python 3.10+ from python.org and ensure it is on your PATH.'
+  )
 }
 
 function getWorkerPath(): string {
