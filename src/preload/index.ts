@@ -25,6 +25,15 @@ const api: ElectronAPI = {
   maximizeWindow: () => ipcRenderer.send('window:maximize'),
   closeWindow: () => ipcRenderer.send('window:close'),
 
+  // Overlay mode
+  getOverlayMode: () => ipcRenderer.invoke('getOverlayMode'),
+  setOverlayMode: (enabled: boolean) => ipcRenderer.invoke('setOverlayMode', enabled),
+  onOverlayChanged: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, enabled: boolean) => callback(enabled)
+    ipcRenderer.on('overlay:changed', handler)
+    return () => ipcRenderer.off('overlay:changed', handler)
+  },
+
   // Push events (main → renderer)
   onJobUpdate: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, update: any) => callback(update)

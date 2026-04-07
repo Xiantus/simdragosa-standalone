@@ -13,6 +13,7 @@ interface StoreSchema {
   wow_path: string
   windowBounds: { width: number; height: number; x?: number; y?: number }
   alwaysOnTop: boolean
+  overlayMode: boolean
 }
 
 const store = new Store<StoreSchema>({
@@ -21,6 +22,7 @@ const store = new Store<StoreSchema>({
     wow_path: '',
     windowBounds: { width: 1200, height: 800 },
     alwaysOnTop: false,
+    overlayMode: false,
   },
 })
 
@@ -151,6 +153,21 @@ function registerIpcHandlers(): void {
   })
   ipcMain.handle('cancelJobs', () => cancelAllWorkers())
 
+  // Overlay mode
+  ipcMain.handle('getOverlayMode', () => store.get('overlayMode'))
+  ipcMain.handle('setOverlayMode', (_event, enabled: boolean) => {
+    store.set('overlayMode', enabled)
+    if (enabled) {
+      mainWindow?.setAlwaysOnTop(true, 'screen-saver')
+      mainWindow?.setSkipTaskbar(true)
+      mainWindow?.webContents.send('overlay:changed', true)
+    } else {
+      mainWindow?.setAlwaysOnTop(store.get('alwaysOnTop'))
+      mainWindow?.setSkipTaskbar(false)
+      mainWindow?.webContents.send('overlay:changed', false)
+    }
+  })
+
   // Lua export (#23)
   ipcMain.handle('exportLua', () => {
     const rows = getAllTooltipData(db)
@@ -234,6 +251,10 @@ app.whenReady().then(() => {
   createTray(mainWindow!, store)
   setupAutoUpdater(mainWindow!)
   if (store.get('alwaysOnTop')) mainWindow!.setAlwaysOnTop(true)
+  if (store.get('overlayMode')) {
+    mainWindow!.setAlwaysOnTop(true, 'screen-saver')
+    mainWindow!.setSkipTaskbar(true)
+  }
 })
 
 app.on('before-quit', () => {

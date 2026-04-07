@@ -1,10 +1,22 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 
 interface Props {
   onSettingsClick?: () => void
 }
 
 export default function TitleBar({ onSettingsClick }: Props = {}): JSX.Element {
+  const [overlayMode, setOverlayMode] = useState(false)
+
+  useEffect(() => {
+    window.api.getOverlayMode().then(setOverlayMode)
+    const unsubscribe = window.api.onOverlayChanged((enabled) => setOverlayMode(enabled))
+    return unsubscribe
+  }, [])
+
+  const handleOverlayToggle = () => {
+    window.api.setOverlayMode(!overlayMode)
+  }
+
   return (
     <div
       style={{
@@ -52,13 +64,36 @@ export default function TitleBar({ onSettingsClick }: Props = {}): JSX.Element {
         </span>
       </div>
 
+      {/* Overlay mode toggle */}
+      <button
+        title={overlayMode ? 'Switch to Desktop mode' : 'Switch to In-Game overlay mode'}
+        onClick={handleOverlayToggle}
+        style={{
+          marginLeft: 'auto',
+          height: 36,
+          padding: '0 10px',
+          border: 'none',
+          background: 'transparent',
+          color: overlayMode ? 'var(--accent)' : 'var(--sub)',
+          cursor: 'pointer',
+          fontSize: 12,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          zIndex: 1,
+          WebkitAppRegion: 'no-drag',
+          whiteSpace: 'nowrap',
+        } as React.CSSProperties}
+      >
+        {overlayMode ? '🖥 Desktop' : '🎮 In-Game'}
+      </button>
+
       {/* Settings button */}
       {onSettingsClick && (
         <button
           title="Settings"
           onClick={onSettingsClick}
           style={{
-            marginLeft: 'auto',
             width: 36,
             height: 36,
             border: 'none',
@@ -80,7 +115,6 @@ export default function TitleBar({ onSettingsClick }: Props = {}): JSX.Element {
       {/* Window control buttons */}
       <div
         style={{
-          marginLeft: onSettingsClick ? undefined : 'auto',
           display: 'flex',
           zIndex: 1,
         }}

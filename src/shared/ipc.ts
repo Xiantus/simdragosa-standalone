@@ -100,6 +100,11 @@ export interface ElectronAPI {
   maximizeWindow: () => void
   closeWindow: () => void
 
+  // Overlay mode
+  getOverlayMode: () => Promise<boolean>
+  setOverlayMode: (enabled: boolean) => Promise<void>
+  onOverlayChanged: (cb: (enabled: boolean) => void) => () => void
+
   // Main → Renderer (push events — return unsubscribe function)
   onJobUpdate: (callback: (update: JobUpdate) => void) => () => void
   onJobDone: (callback: (done: JobDone) => void) => () => void

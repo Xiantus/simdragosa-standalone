@@ -13,12 +13,16 @@ export default function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [playwrightOpen, setPlaywrightOpen] = useState(false)
   const [playwrightInstalled, setPlaywrightInstalled] = useState(true)
+  const [overlayMode, setOverlayMode] = useState(false)
 
   useEffect(() => {
     fetchSettings()
     window.api.isPlaywrightInstalled().then((installed) => {
       setPlaywrightInstalled(installed)
     })
+    window.api.getOverlayMode().then(setOverlayMode)
+    const unsubscribe = window.api.onOverlayChanged((enabled) => setOverlayMode(enabled))
+    return unsubscribe
   }, [])
 
   const handlePlaywrightClose = () => {
@@ -28,7 +32,10 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div
+      data-overlay={overlayMode ? 'true' : undefined}
+      style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}
+    >
       <TitleBar onSettingsClick={() => setSettingsOpen(true)} />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <Sidebar />

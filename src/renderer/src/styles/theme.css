@@ -34,3 +34,7 @@ body {
 ::-webkit-scrollbar-track { background: var(--surf); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--sub); }
+
+[data-overlay="true"] {
+  background: rgba(10, 10, 20, 0.82) !important;
+}
