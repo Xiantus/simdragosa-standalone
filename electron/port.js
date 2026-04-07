@@ -1,6 +1,8 @@
 const net = require('net')
 
-function findFreePort(startPort = 49152) {
+// Start at 40000 — safely below Windows dynamic port range (49152+)
+// which is heavily used by system services like RPC.
+function findFreePort(startPort = 40000) {
   return new Promise((resolve, reject) => {
     const server = net.createServer()
     server.unref()
