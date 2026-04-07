@@ -51,6 +51,95 @@ def _emit(event: dict, emit_fn: Callable | None = None) -> None:
 # Tooltip data parsing (extracted from app.py _parse_tooltip_data)
 # ---------------------------------------------------------------------------
 
+def _parse_simc_spec(simc_string: str) -> tuple[str, int]:
+    """Extract the WoW spec display name and spec_id from a SimC profile string.
+
+    Parses the ``classname="..."`` and ``spec=...`` lines to resolve the real
+    spec, including TWW hero-talent aliases like ``devourer`` (Havoc DH) so
+    the Raidbots payload always has a valid class+spec combination.
+
+    Returns:
+        (display_name, spec_id) — e.g. ("Havoc", 577)
+        Falls back to ("Unknown", 0) if the spec line is missing or unrecognised.
+    """
+    # (simc_class_token, spec_token) → (display_name, spec_id)
+    _SPEC_MAP: dict[tuple[str, str], tuple[str, int]] = {
+        ("warrior",      "arms"):           ("Arms",          71),
+        ("warrior",      "fury"):           ("Fury",          72),
+        ("warrior",      "protection"):     ("Protection",    73),
+        ("paladin",      "holy"):           ("Holy",          65),
+        ("paladin",      "protection"):     ("Protection",    66),
+        ("paladin",      "retribution"):    ("Retribution",   70),
+        ("hunter",       "beast_mastery"):  ("Beast Mastery", 253),
+        ("hunter",       "marksmanship"):   ("Marksmanship",  254),
+        ("hunter",       "survival"):       ("Survival",      255),
+        ("rogue",        "assassination"):  ("Assassination", 259),
+        ("rogue",        "outlaw"):         ("Outlaw",        260),
+        ("rogue",        "subtlety"):       ("Subtlety",      261),
+        ("priest",       "discipline"):     ("Discipline",    256),
+        ("priest",       "holy"):           ("Holy",          257),
+        ("priest",       "shadow"):         ("Shadow",        258),
+        ("shaman",       "elemental"):      ("Elemental",     262),
+        ("shaman",       "enhancement"):    ("Enhancement",   263),
+        ("shaman",       "restoration"):    ("Restoration",   264),
+        ("mage",         "arcane"):         ("Arcane",        62),
+        ("mage",         "fire"):           ("Fire",          63),
+        ("mage",         "frost"):          ("Frost",         64),
+        ("warlock",      "affliction"):     ("Affliction",    265),
+        ("warlock",      "demonology"):     ("Demonology",    266),
+        ("warlock",      "destruction"):    ("Destruction",   267),
+        ("monk",         "brewmaster"):     ("Brewmaster",    268),
+        ("monk",         "windwalker"):     ("Windwalker",    269),
+        ("monk",         "mistweaver"):     ("Mistweaver",    270),
+        ("druid",        "balance"):        ("Balance",       102),
+        ("druid",        "feral"):          ("Feral",         103),
+        ("druid",        "guardian"):       ("Guardian",      104),
+        ("druid",        "restoration"):    ("Restoration",   105),
+        ("demonhunter",  "havoc"):          ("Havoc",         577),
+        ("demonhunter",  "vengeance"):      ("Vengeance",     581),
+        # TWW hero-talent aliases — Devourer and Aldrachi Reaver
+        ("demonhunter",  "devourer"):       ("Havoc",         577),
+        ("demonhunter",  "aldrachi"):       ("Vengeance",     581),
+        ("deathknight",  "blood"):          ("Blood",         250),
+        ("deathknight",  "frost"):          ("Frost",         251),
+        ("deathknight",  "unholy"):         ("Unholy",        252),
+        ("evoker",       "devastation"):    ("Devastation",   1467),
+        ("evoker",       "preservation"):   ("Preservation",  1468),
+        ("evoker",       "augmentation"):   ("Augmentation",  1473),
+    }
+
+    # Known SimC class tokens (the word before ="name" in the profile)
+    _CLASS_TOKENS = {
+        "warrior", "paladin", "hunter", "rogue", "priest", "shaman",
+        "mage", "warlock", "monk", "druid", "demonhunter", "deathknight",
+        "deathknight", "evoker",
+    }
+
+    simc_class = None
+    simc_spec  = None
+
+    for raw_line in simc_string.splitlines():
+        line = raw_line.strip().lower()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, _, _ = line.partition("=")
+            key = key.strip()
+            if key in _CLASS_TOKENS:
+                simc_class = key
+            elif key == "spec":
+                simc_spec = line.partition("=")[2].strip()
+
+    if simc_class and simc_spec:
+        result = _SPEC_MAP.get((simc_class, simc_spec))
+        if result:
+            return result
+        # Unknown spec — return capitalised form with 0 id
+        return simc_spec.replace("_", " ").title(), 0
+
+    return "Unknown", 0
+
+
 def _parse_tooltip_data(report_json: dict) -> list[dict]:
     """Extract item upgrade entries from a Raidbots Droptimizer report JSON."""
     try:
@@ -130,22 +219,37 @@ def run_raidbots_job(spec: dict, emit_fn: Callable | None = None) -> int:
         if talent_code:
             simc = apply_talent(simc, talent_code)
 
-        spec_name = char.get("spec", "Fire").capitalize()
         diff_cfg = DIFFICULTY_MAP.get(difficulty, DIFFICULTY_MAP["raid-heroic"])
+
+        # Auto-detect spec from the simc_string so the payload class/spec always
+        # matches, even when the character was registered with the wrong spec_id.
+        simc_spec_name, simc_spec_id = _parse_simc_spec(simc)
+        stored_spec_id = char.get("spec_id", 63)
+
+        if simc_spec_id and simc_spec_id != stored_spec_id:
+            log.info(
+                "Overriding stored spec_id %d with simc-derived spec %s (%d)",
+                stored_spec_id, simc_spec_name, simc_spec_id,
+            )
+            effective_spec_id   = simc_spec_id
+            effective_spec_name = simc_spec_name
+        else:
+            effective_spec_id   = stored_spec_id
+            effective_spec_name = simc_spec_name or char.get("spec", "Unknown").capitalize()
 
         identity = CharacterIdentity(
             name=char["name"],
             realm=char["realm"],
             region=char["region"],
-            spec_label=spec_name,
+            spec_label=effective_spec_name,
             simc_string=simc,
         )
         target = SimTarget(
             difficulty=difficulty,
             instance_id=diff_cfg["instance_id"],
             fight_style=diff_cfg["fight_style"],
-            spec_id=char.get("spec_id", 63),
-            loot_spec_id=char.get("loot_spec_id", char.get("spec_id", 63)),
+            spec_id=effective_spec_id,
+            loot_spec_id=char.get("loot_spec_id", effective_spec_id),
             crafted_stats=char.get("crafted_stats", "36/49"),
         )
 

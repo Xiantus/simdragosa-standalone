@@ -175,3 +175,49 @@ class TestWorkerProtocol:
         error_lines = [l for l in lines if l.get("type") == "error"]
         assert len(error_lines) >= 1
         assert code != 0
+
+
+class TestParseSimcSpec:
+    """Unit tests for _parse_simc_spec helper."""
+
+    def _parse(self, simc: str):
+        import sys
+        sys.path.insert(0, str(PYTHON_DIR))
+        from worker import _parse_simc_spec
+        return _parse_simc_spec(simc)
+
+    def test_devourer_maps_to_havoc_577(self):
+        simc = 'demonhunter="Xihuntus"\nspec=devourer\n'
+        name, spec_id = self._parse(simc)
+        assert spec_id == 577
+        assert name == "Havoc"
+
+    def test_havoc_maps_correctly(self):
+        simc = 'demonhunter="Xihuntus"\nspec=havoc\n'
+        name, spec_id = self._parse(simc)
+        assert spec_id == 577
+        assert name == "Havoc"
+
+    def test_fire_mage(self):
+        simc = 'mage="Pyronius"\nspec=fire\n'
+        name, spec_id = self._parse(simc)
+        assert spec_id == 63
+        assert name == "Fire"
+
+    def test_devastation_evoker(self):
+        simc = 'evoker="Xiantu"\nspec=devastation\n'
+        name, spec_id = self._parse(simc)
+        assert spec_id == 1467
+        assert name == "Devastation"
+
+    def test_missing_spec_returns_unknown(self):
+        simc = 'mage="Pyronius"\n# no spec line\n'
+        name, spec_id = self._parse(simc)
+        assert spec_id == 0
+        assert name == "Unknown"
+
+    def test_comments_ignored(self):
+        simc = '# spec=fire\nmage="Pyronius"\nspec=arcane\n'
+        name, spec_id = self._parse(simc)
+        assert spec_id == 62
+        assert name == "Arcane"
