@@ -3,7 +3,7 @@ import { join } from 'path'
 import Store from 'electron-store'
 import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows } from './db'
 import { buildLua, writeLuaFile } from './lua-export'
-import { spawnWorker, cancelAllWorkers, type JobSpec } from './sim-runner'
+import { spawnWorker, cancelAllWorkers, findPython, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
 import { setupAutoUpdater } from './updater'
 import type { Character, Settings, SimSelection } from '../shared/ipc'
@@ -162,8 +162,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle('isPlaywrightInstalled', (): boolean => {
     try {
       const { execFileSync } = require('child_process') as typeof import('child_process')
+      const py = findPython()
       // `python -m playwright install --dry-run chromium` exits 0 when already installed
-      execFileSync('python', ['-m', 'playwright', 'install', '--dry-run', 'chromium'], {
+      execFileSync(py, ['-m', 'playwright', 'install', '--dry-run', 'chromium'], {
         stdio: 'pipe',
         timeout: 10_000,
       })
@@ -175,9 +176,10 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('installPlaywright', async () => {
     const { spawn } = require('child_process') as typeof import('child_process')
+    const py = findPython()
     await new Promise<void>((resolve, reject) => {
       // Run `python -m playwright install chromium`
-      const child = spawn('python', ['-m', 'playwright', 'install', 'chromium'], {
+      const child = spawn(py, ['-m', 'playwright', 'install', 'chromium'], {
         stdio: ['ignore', 'pipe', 'pipe'],
       })
 

@@ -25,7 +25,7 @@ export interface JobSpec {
 
 const activeWorkers = new Map<string, ChildProcess>()
 
-function findPython(): string {
+export function findPython(): string {
   for (const cmd of ['py', 'python3', 'python']) {
     try {
       const r = spawnSync(cmd, ['--version'], { timeout: 3000 })
