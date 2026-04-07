@@ -97,9 +97,8 @@ def _parse_simc_spec(simc_string: str) -> tuple[str, int]:
         ("druid",        "restoration"):    ("Restoration",   105),
         ("demonhunter",  "havoc"):          ("Havoc",         577),
         ("demonhunter",  "vengeance"):      ("Vengeance",     581),
-        # TWW hero-talent aliases — Devourer and Aldrachi Reaver
-        ("demonhunter",  "devourer"):       ("Havoc",         577),
-        ("demonhunter",  "aldrachi"):       ("Vengeance",     581),
+        # TWW standalone DH specs (separate spec IDs, not hero-talent aliases)
+        ("demonhunter",  "devourer"):       ("Devourer",      1480),
         ("deathknight",  "blood"):          ("Blood",         250),
         ("deathknight",  "frost"):          ("Frost",         251),
         ("deathknight",  "unholy"):         ("Unholy",        252),

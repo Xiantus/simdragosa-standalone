@@ -186,11 +186,12 @@ class TestParseSimcSpec:
         from worker import _parse_simc_spec
         return _parse_simc_spec(simc)
 
-    def test_devourer_maps_to_havoc_577(self):
+    def test_devourer_is_spec_1480(self):
+        """Devourer is its own TWW spec ID (1480), not a Havoc alias."""
         simc = 'demonhunter="Xihuntus"\nspec=devourer\n'
         name, spec_id = self._parse(simc)
-        assert spec_id == 577
-        assert name == "Havoc"
+        assert spec_id == 1480
+        assert name == "Devourer"
 
     def test_havoc_maps_correctly(self):
         simc = 'demonhunter="Xihuntus"\nspec=havoc\n'
