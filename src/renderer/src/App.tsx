@@ -4,23 +4,38 @@ import Sidebar from './components/Sidebar'
 import MainPanel from './components/MainPanel'
 import OnboardingFlow from './components/OnboardingFlow'
 import SettingsPanel from './components/SettingsPanel'
+import PlaywrightInstallModal from './components/PlaywrightInstallModal'
 import { useSettingsStore } from './stores/useSettingsStore'
 import './styles/theme.css'
 
 export default function App(): JSX.Element {
   const { is_configured, raidsid, wow_path, fetchSettings, saveSettings } = useSettingsStore()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [playwrightOpen, setPlaywrightOpen] = useState(false)
+  const [playwrightInstalled, setPlaywrightInstalled] = useState(true)
 
   useEffect(() => {
     fetchSettings()
+    window.api.isPlaywrightInstalled().then((installed) => {
+      setPlaywrightInstalled(installed)
+    })
   }, [])
+
+  const handlePlaywrightClose = () => {
+    setPlaywrightOpen(false)
+    // Re-check if it's now installed
+    window.api.isPlaywrightInstalled().then(setPlaywrightInstalled)
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <TitleBar onSettingsClick={() => setSettingsOpen(true)} />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <Sidebar />
-        <MainPanel />
+        <MainPanel
+          playwrightInstalled={playwrightInstalled}
+          onInstallPlaywright={() => setPlaywrightOpen(true)}
+        />
       </div>
 
       <OnboardingFlow
@@ -33,6 +48,11 @@ export default function App(): JSX.Element {
         raidsid={raidsid}
         wow_path={wow_path}
         onClose={() => setSettingsOpen(false)}
+      />
+
+      <PlaywrightInstallModal
+        open={playwrightOpen}
+        onClose={handlePlaywrightClose}
       />
     </div>
   )

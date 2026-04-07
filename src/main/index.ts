@@ -157,9 +157,70 @@ function registerIpcHandlers(): void {
     return buildLua(rows)
   })
 
-  // Playwright placeholders (#24)
-  ipcMain.handle('isPlaywrightInstalled', () => false)
-  ipcMain.handle('installPlaywright', () => { /* implemented in #24 */ })
+  // Playwright on-demand install (#24)
+  // Uses Python playwright to drive Raidbots; check/install via `python -m playwright`
+  ipcMain.handle('isPlaywrightInstalled', (): boolean => {
+    try {
+      const { execFileSync } = require('child_process') as typeof import('child_process')
+      // `python -m playwright install --dry-run chromium` exits 0 when already installed
+      execFileSync('python', ['-m', 'playwright', 'install', '--dry-run', 'chromium'], {
+        stdio: 'pipe',
+        timeout: 10_000,
+      })
+      return true
+    } catch {
+      return false
+    }
+  })
+
+  ipcMain.handle('installPlaywright', async () => {
+    const { spawn } = require('child_process') as typeof import('child_process')
+    await new Promise<void>((resolve, reject) => {
+      // Run `python -m playwright install chromium`
+      const child = spawn('python', ['-m', 'playwright', 'install', 'chromium'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+
+      let percent = 0
+      const parseProgress = (text: string) => {
+        const line = text.trim()
+        if (!line) return
+        // playwright outputs lines like "Downloading Chromium 123.0 - 42%"
+        const pctMatch = line.match(/(\d+)%/)
+        if (pctMatch) {
+          percent = parseInt(pctMatch[1], 10)
+        } else {
+          // For non-percentage lines, advance conservatively
+          percent = Math.min(percent + 1, 95)
+        }
+        mainWindow?.webContents.send('playwright:progress', { percent, message: line })
+      }
+
+      let buf = ''
+      child.stdout?.on('data', (chunk: Buffer) => {
+        buf += chunk.toString()
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        lines.forEach(parseProgress)
+      })
+      child.stderr?.on('data', (chunk: Buffer) => {
+        chunk.toString().split('\n').forEach(parseProgress)
+      })
+
+      child.on('close', (code) => {
+        if (code === 0) {
+          mainWindow?.webContents.send('playwright:progress', {
+            percent: 100,
+            message: 'Chromium installed successfully.',
+          })
+          resolve()
+        } else {
+          reject(new Error(`playwright install exited with code ${code}`))
+        }
+      })
+      child.on('error', reject)
+    })
+  })
 }
 
 app.whenReady().then(() => {
