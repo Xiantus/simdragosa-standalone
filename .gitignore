@@ -15,8 +15,11 @@ results.json
 last_run.json
 
 # Electron / Node
-electron/node_modules/
-electron/dist/
+node_modules/
+out/
+dist/
 release/
+*.lock
+!package-lock.json
 *.exe
 !static/simdragosa-icon.png

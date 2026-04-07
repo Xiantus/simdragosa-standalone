@@ -88,7 +88,8 @@ def find_talent_builds(simc: str) -> dict[str, str]:
             # Header: ### Raid  or  # --- ST ---  or  ## Single Target
             hm = re.match(r'^#{1,3}[-\s]*([A-Za-z][^\n]*)[-\s]*$', s)
             if hm:
-                pending = _canonical(hm.group(1).strip())
+                label = re.sub(r'[-\s]+$', '', hm.group(1)).strip()
+                pending = _canonical(label)
                 continue
             if pending:
                 tm = re.match(r'#?\s*talents\s*=\s*(\S+)', s)
