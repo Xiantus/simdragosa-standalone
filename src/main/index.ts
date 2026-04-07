@@ -6,6 +6,7 @@ import { buildLua, writeLuaFile } from './lua-export'
 import { spawnWorker, cancelAllWorkers, findPython, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
 import { setupAutoUpdater } from './updater'
+import { createTriggerWindow, showTriggerWindow, hideTriggerWindow, destroyTriggerWindow, registerTriggerIpc } from './trigger-window'
 import type { Character, Settings, SimSelection } from '../shared/ipc'
 
 interface StoreSchema {
@@ -14,6 +15,7 @@ interface StoreSchema {
   windowBounds: { width: number; height: number; x?: number; y?: number }
   alwaysOnTop: boolean
   overlayMode: boolean
+  triggerPosition: { x: number; y: number }
 }
 
 const store = new Store<StoreSchema>({
@@ -23,6 +25,7 @@ const store = new Store<StoreSchema>({
     windowBounds: { width: 1200, height: 800 },
     alwaysOnTop: false,
     overlayMode: false,
+    triggerPosition: { x: 120, y: 120 },
   },
 })
 
@@ -161,10 +164,17 @@ function registerIpcHandlers(): void {
       mainWindow?.setAlwaysOnTop(true, 'screen-saver')
       mainWindow?.setSkipTaskbar(true)
       mainWindow?.webContents.send('overlay:changed', true)
+      showTriggerWindow()
     } else {
       mainWindow?.setAlwaysOnTop(store.get('alwaysOnTop'))
       mainWindow?.setSkipTaskbar(false)
       mainWindow?.webContents.send('overlay:changed', false)
+      hideTriggerWindow()
+      // Restore main window if it was hidden
+      if (!mainWindow?.isVisible()) {
+        mainWindow?.show()
+        mainWindow?.focus()
+      }
     }
   })
 
@@ -247,13 +257,16 @@ function registerIpcHandlers(): void {
 app.whenReady().then(() => {
   db = initDb(join(app.getPath('userData'), 'simdragosa.db'))
   registerIpcHandlers()
+  registerTriggerIpc()
   createWindow()
+  createTriggerWindow(mainWindow!, store)
   createTray(mainWindow!, store)
   setupAutoUpdater(mainWindow!)
   if (store.get('alwaysOnTop')) mainWindow!.setAlwaysOnTop(true)
   if (store.get('overlayMode')) {
     mainWindow!.setAlwaysOnTop(true, 'screen-saver')
     mainWindow!.setSkipTaskbar(true)
+    showTriggerWindow()
   }
 })
 
@@ -261,6 +274,7 @@ app.on('before-quit', () => {
   ;(app as any)._quitting = true
   cancelAllWorkers()
   destroyTray()
+  destroyTriggerWindow()
 })
 
 app.on('window-all-closed', () => {
