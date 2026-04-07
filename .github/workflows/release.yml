@@ -45,13 +45,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
 
       - name: Install Node dependencies
-        working-directory: electron
         run: npm ci
 
-      - name: Build and publish NSIS installer
-        working-directory: electron
+      - name: Run tests
+        run: |
+          npm test
+          npx vitest run
+
+      - name: Build Electron app
+        run: npm run build
+
+      - name: Package and publish NSIS installer
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run publish

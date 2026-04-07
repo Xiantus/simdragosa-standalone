@@ -8,7 +8,9 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "test": "jest --config jest.config.cjs",
-    "test:renderer": "vitest run"
+    "test:renderer": "vitest run",
+    "package": "npm run build && electron-builder --dir",
+    "publish": "npm run build && electron-builder --publish always"
   },
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",
