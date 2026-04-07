@@ -1,7 +1,10 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
+import { initDb, getCharacters, upsertCharacter, deleteCharacter } from './db'
+import type { Character } from '../shared/ipc'
 
 let mainWindow: BrowserWindow | null = null
+let db: ReturnType<typeof initDb>
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -41,7 +44,23 @@ function createWindow(): void {
   ipcMain.on('window:close', () => mainWindow?.close())
 }
 
-app.whenReady().then(createWindow)
+function registerIpcHandlers(): void {
+  ipcMain.handle('getCharacters', () => getCharacters(db))
+  ipcMain.handle('upsertCharacter', (_event, char: Character) => {
+    if (!char.id) {
+      char.id = `${char.name.toLowerCase()}-${char.spec.toLowerCase()}`
+    }
+    upsertCharacter(db, char)
+  })
+  ipcMain.handle('deleteCharacter', (_event, id: string) => deleteCharacter(db, id))
+}
+
+app.whenReady().then(() => {
+  db = initDb(join(app.getPath('userData'), 'simdragosa.db'))
+  registerIpcHandlers()
+  createWindow()
+})
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
