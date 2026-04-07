@@ -147,7 +147,9 @@ export function createTriggerWindow(mainWin: BrowserWindow, store: any): void {
     },
   })
 
-  triggerWin.setAlwaysOnTop(true, 'screen-saver')
+  // 'floating' = HWND_TOPMOST on Windows — above WoW but not above other
+  // overlay apps (Archon, Discord, etc.) that use the same level.
+  triggerWin.setAlwaysOnTop(true, 'floating')
   triggerWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildHtml(iconDataUrl()))}`)
   triggerWin.hide() // hidden until overlay mode is active
 }
