@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import Store from 'electron-store'
-import { initDb, getCharacters, upsertCharacter, deleteCharacter } from './db'
+import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows } from './db'
+import { buildLua, writeLuaFile } from './lua-export'
 import { spawnWorker, cancelAllWorkers, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
 import { setupAutoUpdater } from './updater'
@@ -124,14 +125,37 @@ function registerIpcHandlers(): void {
           raidbots_api_key: null,
           timeout_minutes: 30,
         }
-        if (mainWindow) spawnWorker(spec, mainWindow, db)
+        if (mainWindow) spawnWorker(spec, mainWindow, db, (dpsGains, charName, specName, difficulty) => {
+          const rows = dpsGains.map((g: any) => ({
+            item_id: g.item_id,
+            char_name: charName,
+            realm: spec.character.realm,
+            spec: specName,
+            difficulty,
+            dps_gain: g.dps_gain,
+            ilvl: g.ilvl ?? null,
+            item_name: g.item_name ?? null,
+            sim_date: new Date().toISOString().slice(0, 10),
+          }))
+          if (rows.length > 0) {
+            upsertTooltipRows(db, rows)
+            const wow_path = store.get('wow_path')
+            if (wow_path) {
+              const allRows = getAllTooltipData(db)
+              writeLuaFile(buildLua(allRows), wow_path)
+            }
+          }
+        })
       }
     }
   })
   ipcMain.handle('cancelJobs', () => cancelAllWorkers())
 
-  // Lua export placeholder (#23)
-  ipcMain.handle('exportLua', () => '')
+  // Lua export (#23)
+  ipcMain.handle('exportLua', () => {
+    const rows = getAllTooltipData(db)
+    return buildLua(rows)
+  })
 
   // Playwright placeholders (#24)
   ipcMain.handle('isPlaywrightInstalled', () => false)

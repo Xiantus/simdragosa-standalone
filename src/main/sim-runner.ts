@@ -45,7 +45,8 @@ function getWorkerPath(): string {
 export function spawnWorker(
   spec: JobSpec,
   win: BrowserWindow,
-  db: any
+  db: any,
+  onDone?: (dpsGains: any[], charName: string, specName: string, difficulty: string) => void
 ): void {
   const workerPath = getWorkerPath()
   const isPackaged = app.isPackaged
@@ -78,7 +79,7 @@ export function spawnWorker(
       if (!trimmed) continue
       try {
         const event = JSON.parse(trimmed)
-        handleWorkerEvent(spec, event, win, db)
+        handleWorkerEvent(spec, event, win, db, onDone)
       } catch (_) {
         console.warn(`[worker ${spec.job_id}] non-JSON stdout:`, trimmed)
       }
@@ -107,7 +108,8 @@ function handleWorkerEvent(
   spec: JobSpec,
   event: any,
   win: BrowserWindow,
-  db: any
+  db: any,
+  onDone?: (dpsGains: any[], charName: string, specName: string, difficulty: string) => void
 ): void {
   if (!win || win.isDestroyed()) return
 
@@ -135,6 +137,7 @@ function handleWorkerEvent(
       dps_gains: event.dps_gains ?? [],
     }
     try { upsertJobResult(db, key, record, record) } catch (_) {}
+    if (onDone) onDone(event.dps_gains ?? [], spec.character.name, spec.character.spec, spec.difficulty)
 
   } else if (event.type === 'error') {
     const err: JobError = {
