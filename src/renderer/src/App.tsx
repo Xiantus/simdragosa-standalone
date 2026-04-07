@@ -1,4 +1,8 @@
 import React from 'react'
+import TitleBar from './components/TitleBar'
+import Sidebar from './components/Sidebar'
+import MainPanel from './components/MainPanel'
+import './styles/theme.css'
 
 export default function App(): JSX.Element {
   return (
@@ -7,39 +11,13 @@ export default function App(): JSX.Element {
         display: 'flex',
         flexDirection: 'column',
         height: '100vh',
-        background: '#13131f',
-        color: '#dde0f0',
+        overflow: 'hidden',
       }}
     >
-      {/* TitleBar placeholder */}
-      <div
-        style={{
-          height: 36,
-          background: '#1c1c2e',
-          display: 'flex',
-          alignItems: 'center',
-          paddingLeft: 16,
-          WebkitAppRegion: 'drag',
-          flexShrink: 0,
-        } as React.CSSProperties}
-      >
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#7c6af7' }}>
-          Simdragosa
-        </span>
-      </div>
-
-      {/* Body placeholder */}
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#7878a0',
-          fontSize: 14,
-        }}
-      >
-        v2 scaffold — React loaded via loadFile() ✓
+      <TitleBar />
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        <Sidebar />
+        <MainPanel />
       </div>
     </div>
   )
