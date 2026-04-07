@@ -2,7 +2,10 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import Store from 'electron-store'
 import { initDb, getCharacters, upsertCharacter, deleteCharacter } from './db'
-import type { Character, Settings } from '../shared/ipc'
+import { spawnWorker, cancelAllWorkers, type JobSpec } from './sim-runner'
+import { createTray, destroyTray } from './tray'
+import { setupAutoUpdater } from './updater'
+import type { Character, Settings, SimSelection } from '../shared/ipc'
 
 interface StoreSchema {
   raidsid: string
@@ -19,6 +22,8 @@ const store = new Store<StoreSchema>({
     alwaysOnTop: false,
   },
 })
+
+const HEALER_SPEC_IDS = new Set([65, 105, 256, 257, 264, 270, 1468])
 
 let mainWindow: BrowserWindow | null = null
 let db: ReturnType<typeof initDb>
@@ -43,8 +48,14 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
-  mainWindow.on('close', () => {
+
+  // Save bounds and hide to tray instead of quitting on close
+  mainWindow.on('close', (e) => {
     if (mainWindow) store.set('windowBounds', mainWindow.getBounds())
+    if (!(app as any)._quitting) {
+      e.preventDefault()
+      mainWindow?.hide()
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -64,7 +75,8 @@ function createWindow(): void {
     if (mainWindow?.isMaximized()) mainWindow.unmaximize()
     else mainWindow?.maximize()
   })
-  ipcMain.on('window:close', () => mainWindow?.close())
+  // Close button sends window to tray
+  ipcMain.on('window:close', () => mainWindow?.hide())
 }
 
 function registerIpcHandlers(): void {
@@ -89,20 +101,59 @@ function registerIpcHandlers(): void {
     if (partial.wow_path !== undefined) store.set('wow_path', partial.wow_path)
   })
 
-  // Placeholders for later issues
-  ipcMain.handle('startSim', () => { /* #21 */ })
-  ipcMain.handle('cancelJobs', () => { /* #21 */ })
-  ipcMain.handle('exportLua', () => '') // #23
-  ipcMain.handle('isPlaywrightInstalled', () => false) // #24
-  ipcMain.handle('installPlaywright', () => { /* #24 */ })
+  // Sim launch (#21)
+  ipcMain.handle('startSim', async (_event, selection: SimSelection) => {
+    const raidsid = store.get('raidsid')
+    if (!raidsid) throw new Error('No raidsid configured')
+    const characters = getCharacters(db)
+    const charMap = new Map(characters.map((c) => [c.id, c]))
+
+    for (const charId of selection.character_ids) {
+      const char = charMap.get(charId)
+      if (!char) continue
+      for (const difficulty of selection.difficulties) {
+        const job_id = `${charId}-${difficulty}-${Date.now()}`
+        const spec: JobSpec = {
+          type: HEALER_SPEC_IDS.has(char.spec_id) ? 'qe' : 'raidbots',
+          job_id,
+          character: char,
+          difficulty,
+          build_label: 'Default',
+          talent_code: null,
+          raidsid,
+          raidbots_api_key: null,
+          timeout_minutes: 30,
+        }
+        if (mainWindow) spawnWorker(spec, mainWindow, db)
+      }
+    }
+  })
+  ipcMain.handle('cancelJobs', () => cancelAllWorkers())
+
+  // Lua export placeholder (#23)
+  ipcMain.handle('exportLua', () => '')
+
+  // Playwright placeholders (#24)
+  ipcMain.handle('isPlaywrightInstalled', () => false)
+  ipcMain.handle('installPlaywright', () => { /* implemented in #24 */ })
 }
 
 app.whenReady().then(() => {
   db = initDb(join(app.getPath('userData'), 'simdragosa.db'))
   registerIpcHandlers()
   createWindow()
+  createTray(mainWindow!, store)
+  setupAutoUpdater(mainWindow!)
+  if (store.get('alwaysOnTop')) mainWindow!.setAlwaysOnTop(true)
+})
+
+app.on('before-quit', () => {
+  ;(app as any)._quitting = true
+  cancelAllWorkers()
+  destroyTray()
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  // Windows: keep alive in tray; quit only via tray Quit menu
+  if (process.platform === 'darwin') app.quit()
 })
