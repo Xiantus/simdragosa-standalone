@@ -177,51 +177,53 @@ function registerIpcHandlers(): void {
   ipcMain.handle('installPlaywright', async () => {
     const { spawn } = require('child_process') as typeof import('child_process')
     const py = findPython()
-    await new Promise<void>((resolve, reject) => {
-      // Run `python -m playwright install chromium`
-      const child = spawn(py, ['-m', 'playwright', 'install', 'chromium'], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
 
-      let percent = 0
-      const parseProgress = (text: string) => {
-        const line = text.trim()
-        if (!line) return
-        // playwright outputs lines like "Downloading Chromium 123.0 - 42%"
-        const pctMatch = line.match(/(\d+)%/)
-        if (pctMatch) {
-          percent = parseInt(pctMatch[1], 10)
-        } else {
-          // For non-percentage lines, advance conservatively
-          percent = Math.min(percent + 1, 95)
+    // Helper: run a child process and stream output as progress events
+    const runStep = (args: string[], basePercent: number, maxPercent: number) =>
+      new Promise<void>((resolve, reject) => {
+        const child = spawn(py, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+
+        let stepPercent = basePercent
+        const parseProgress = (text: string) => {
+          const line = text.trim()
+          if (!line) return
+          const pctMatch = line.match(/(\d+)%/)
+          if (pctMatch) {
+            // Scale inner percentage into our range
+            const inner = parseInt(pctMatch[1], 10)
+            stepPercent = basePercent + Math.round((inner / 100) * (maxPercent - basePercent))
+          } else {
+            stepPercent = Math.min(stepPercent + 1, maxPercent - 1)
+          }
+          mainWindow?.webContents.send('playwright:progress', { percent: stepPercent, message: line })
         }
-        mainWindow?.webContents.send('playwright:progress', { percent, message: line })
-      }
 
-      let buf = ''
-      child.stdout?.on('data', (chunk: Buffer) => {
-        buf += chunk.toString()
-        const lines = buf.split('\n')
-        buf = lines.pop() ?? ''
-        lines.forEach(parseProgress)
-      })
-      child.stderr?.on('data', (chunk: Buffer) => {
-        chunk.toString().split('\n').forEach(parseProgress)
+        let buf = ''
+        child.stdout?.on('data', (chunk: Buffer) => {
+          buf += chunk.toString()
+          const lines = buf.split('\n')
+          buf = lines.pop() ?? ''
+          lines.forEach(parseProgress)
+        })
+        child.stderr?.on('data', (chunk: Buffer) => {
+          chunk.toString().split('\n').forEach(parseProgress)
+        })
+        child.on('close', (code) => {
+          if (code === 0) resolve()
+          else reject(new Error(`${args.join(' ')} exited with code ${code}`))
+        })
+        child.on('error', reject)
       })
 
-      child.on('close', (code) => {
-        if (code === 0) {
-          mainWindow?.webContents.send('playwright:progress', {
-            percent: 100,
-            message: 'Chromium installed successfully.',
-          })
-          resolve()
-        } else {
-          reject(new Error(`playwright install exited with code ${code}`))
-        }
-      })
-      child.on('error', reject)
-    })
+    // Step 1 (0–30%): pip install playwright (installs the Python package)
+    mainWindow?.webContents.send('playwright:progress', { percent: 0, message: 'Installing playwright Python package…' })
+    await runStep(['-m', 'pip', 'install', '--upgrade', 'playwright'], 0, 30)
+
+    // Step 2 (30–100%): playwright install chromium (downloads the browser)
+    mainWindow?.webContents.send('playwright:progress', { percent: 30, message: 'Downloading Chromium browser…' })
+    await runStep(['-m', 'playwright', 'install', 'chromium'], 30, 100)
+
+    mainWindow?.webContents.send('playwright:progress', { percent: 100, message: 'Chromium installed successfully.' })
   })
 }
 
