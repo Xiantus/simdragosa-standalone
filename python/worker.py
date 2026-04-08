@@ -353,24 +353,62 @@ def main() -> int:
 # ---------------------------------------------------------------------------
 
 def _playwright_driver():
-    """Return (driver_executable_path, env) or raise ImportError."""
-    from playwright._impl._driver import compute_driver_executable, get_driver_env  # type: ignore
-    return compute_driver_executable(), get_driver_env()
+    """Return (cmd_list, env) for running the playwright driver, or raise RuntimeError."""
+    import os
+    import pathlib
+    from playwright._impl._driver import get_driver_env  # type: ignore
+
+    env = get_driver_env()
+
+    # 1. Try standard path computation (works in normal Python environments).
+    try:
+        from playwright._impl._driver import compute_driver_executable  # type: ignore
+        candidate = pathlib.Path(compute_driver_executable())
+        if candidate.exists():
+            driver_path = candidate
+        else:
+            driver_path = None
+    except Exception:
+        driver_path = None
+
+    # 2. Fallback: look in the PyInstaller extraction temp dir (sys._MEIPASS).
+    if driver_path is None and hasattr(sys, "_MEIPASS"):
+        base = pathlib.Path(sys._MEIPASS) / "playwright" / "driver"  # type: ignore[attr-defined]
+        for name in ("playwright.exe", "playwright.cmd", "playwright"):
+            candidate = base / name
+            if candidate.exists():
+                driver_path = candidate
+                break
+
+    if driver_path is None:
+        raise RuntimeError(
+            "Playwright driver not found. "
+            f"Searched standard path and {getattr(sys, '_MEIPASS', '(no _MEIPASS)')}."
+        )
+
+    # .cmd batch files must be run via cmd.exe /c on Windows.
+    if sys.platform == "win32" and driver_path.suffix.lower() == ".cmd":
+        cmd = ["cmd", "/c", str(driver_path)]
+    else:
+        cmd = [str(driver_path)]
+
+    return cmd, env
 
 
 def install_playwright_main() -> int:
     """Download Playwright Chromium. Emits JSON progress events to stdout."""
     import subprocess
+    import re
     try:
-        driver_exe, env = _playwright_driver()
-    except ImportError:
-        print(json.dumps({"type": "error", "message": "Playwright is not bundled in this build."}), flush=True)
+        driver_cmd, env = _playwright_driver()
+    except Exception as exc:
+        print(json.dumps({"type": "error", "message": f"Playwright driver not available: {exc}"}), flush=True)
         return 1
 
     try:
         print(json.dumps({"type": "progress", "percent": 5, "message": "Starting Chromium download…"}), flush=True)
         proc = subprocess.Popen(
-            [str(driver_exe), "install", "chromium"],
+            driver_cmd + ["install", "chromium"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             env=env,
@@ -384,7 +422,7 @@ def install_playwright_main() -> int:
             line = line.strip()
             if not line:
                 continue
-            m = __import__("re").search(r"(\d+)%", line)
+            m = re.search(r"(\d+)%", line)
             if m:
                 inner = int(m.group(1))
                 percent = 5 + round(inner * 0.9)
@@ -407,9 +445,9 @@ def check_playwright_main() -> int:
     """Exit 0 if Playwright Chromium is already installed, 1 otherwise."""
     import subprocess
     try:
-        driver_exe, env = _playwright_driver()
+        driver_cmd, env = _playwright_driver()
         result = subprocess.run(
-            [str(driver_exe), "install", "--dry-run", "chromium"],
+            driver_cmd + ["install", "--dry-run", "chromium"],
             capture_output=True,
             env=env,
             timeout=15,

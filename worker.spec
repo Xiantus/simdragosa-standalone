@@ -6,16 +6,25 @@
 # Output: dist/worker.exe
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+import os
 
 block_cipher = None
 
-# Bundle playwright's driver binary so worker.exe can install Chromium
-# without requiring system Python.  collect_data_files picks up the Node-based
-# playwright.cmd / playwright driver directory shipped with the Python package.
+# Bundle playwright's driver directory (contains the Node-based playwright.exe /
+# playwright.cmd that downloads Chromium).  We copy the entire 'driver' folder
+# explicitly because collect_data_files can miss large binary trees.
+_playwright_datas = []
 try:
-    _playwright_datas = collect_data_files('playwright', include_py_files=False)
-except Exception:
-    _playwright_datas = []
+    import playwright as _pw
+    _pw_driver_dir = os.path.join(os.path.dirname(_pw.__file__), 'driver')
+    if os.path.isdir(_pw_driver_dir):
+        # (source_dir, dest_relative_to_extraction_root)
+        _playwright_datas = [(_pw_driver_dir, 'playwright/driver')]
+        print(f"[spec] Bundling playwright driver from: {_pw_driver_dir}")
+    else:
+        print("[spec] playwright driver dir not found — healer sims will require manual Playwright install")
+except Exception as _e:
+    print(f"[spec] playwright not installed, skipping driver bundle: {_e}")
 
 a = Analysis(
     ['python/worker.py'],
