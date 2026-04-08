@@ -8,8 +8,8 @@ let tray: Tray | null = null
 function loadIcon(): Electron.NativeImage {
   try {
     const iconPath = app.isPackaged
-      ? join(process.resourcesPath, 'simdragosa-icon.png')
-      : join(app.getAppPath(), 'resources', 'simdragosa-icon.png')
+      ? join(process.resourcesPath, 'static', 'simdragosa-icon.png')
+      : join(app.getAppPath(), 'static', 'simdragosa-icon.png')
     const img = nativeImage.createFromPath(iconPath)
     if (!img.isEmpty()) return img
   } catch (_) {}

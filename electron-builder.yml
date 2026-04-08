@@ -9,8 +9,8 @@ files:
 extraResources:
   - from: dist/worker.exe
     to: worker.exe
-    filter:
-      - '**/*'
+  - from: static/
+    to: static/
 win:
   target:
     - target: nsis
