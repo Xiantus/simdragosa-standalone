@@ -6,10 +6,12 @@ import OnboardingFlow from './components/OnboardingFlow'
 import SettingsPanel from './components/SettingsPanel'
 import PlaywrightInstallModal from './components/PlaywrightInstallModal'
 import { useSettingsStore } from './stores/useSettingsStore'
+import { useJobStore } from './stores/useJobStore'
 import './styles/theme.css'
 
 export default function App(): JSX.Element {
   const { is_configured, raidsid, wow_path, fetchSettings } = useSettingsStore()
+  const loadHistoricalJobs = useJobStore((s) => s.loadHistoricalJobs)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [playwrightOpen, setPlaywrightOpen] = useState(false)
   const [playwrightInstalled, setPlaywrightInstalled] = useState(true)
@@ -17,6 +19,7 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     fetchSettings()
+    loadHistoricalJobs()
     window.api.isPlaywrightInstalled().then((installed) => {
       setPlaywrightInstalled(installed)
     })

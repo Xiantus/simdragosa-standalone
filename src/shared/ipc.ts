@@ -58,6 +58,20 @@ export interface DpsGain {
   item_name?: string | null
 }
 
+export interface StoredResult {
+  job_id: string
+  char_id: string
+  char_name: string
+  spec?: string
+  difficulty: string
+  build_label: string
+  status: 'done' | 'error'
+  url?: string
+  dps_gains?: DpsGain[]
+  ended_at?: number
+  error_message?: string
+}
+
 export interface JobUpdate {
   job_id: string
   status: JobStatus
@@ -89,6 +103,9 @@ export interface ElectronAPI {
   deleteCharacter: (id: string) => Promise<void>
   getSettings: () => Promise<Settings>
   saveSettings: (partial: Partial<Settings>) => Promise<void>
+  getJobResults: () => Promise<StoredResult[]>
+  fetchItemNames: (itemIds: number[]) => Promise<Record<number, string>>
+  writeLua: () => Promise<{ ok: boolean; path?: string; error?: string }>
   startSim: (selections: SimSelection) => Promise<void>
   cancelJobs: () => Promise<void>
   exportLua: () => Promise<string>

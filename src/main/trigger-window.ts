@@ -6,114 +6,17 @@
  * movement) toggles the main window's visibility. Position is persisted.
  */
 
-import { BrowserWindow, ipcMain, screen, nativeImage } from 'electron'
-import { join, resolve } from 'path'
-import { readFileSync, existsSync } from 'fs'
+import { BrowserWindow, ipcMain, screen } from 'electron'
+import { join } from 'path'
+import { startWowMonitor, stopWowMonitor } from './wow-monitor'
 
 let triggerWin: BrowserWindow | null = null
 
-// ── icon ──────────────────────────────────────────────────────────────────────
-
-function iconDataUrl(): string {
-  // Try static/simdragosa-icon.png relative to app root
-  const candidates = [
-    join(app_root(), 'static', 'simdragosa-icon.png'),
-    join(app_root(), 'resources', 'simdragosa-icon.png'),
-  ]
-  for (const p of candidates) {
-    if (existsSync(p)) {
-      const b64 = readFileSync(p).toString('base64')
-      return `data:image/png;base64,${b64}`
-    }
-  }
-  // Fallback: simple SVG dragon silhouette as data URL
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 56">
-    <circle cx="28" cy="28" r="28" fill="#5b4cf5"/>
-    <text x="28" y="36" text-anchor="middle" font-size="28" font-family="serif" fill="white">S</text>
-  </svg>`
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`
-}
-
 function app_root(): string {
-  // Works both in dev (project root) and packaged (resources/app)
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { app } = require('electron') as typeof import('electron')
-    return app.isPackaged ? process.resourcesPath : join(__dirname, '../../..')
-  } catch {
-    return join(__dirname, '../../..')
-  }
-}
-
-// ── HTML ──────────────────────────────────────────────────────────────────────
-
-function buildHtml(iconUrl: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; user-select:none; }
-  html, body { width:56px; height:56px; background:transparent; overflow:hidden; }
-  #btn {
-    width:56px; height:56px; border-radius:50%;
-    background: rgba(20,18,40,0.92);
-    border: 2px solid rgba(120,100,255,0.6);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.7);
-    cursor:pointer;
-    display:flex; align-items:center; justify-content:center;
-    transition: border-color 0.15s, box-shadow 0.15s;
-    overflow:hidden;
-  }
-  #btn:hover {
-    border-color: rgba(160,140,255,0.9);
-    box-shadow: 0 2px 18px rgba(91,76,245,0.6);
-  }
-  #btn img { width:36px; height:36px; object-fit:contain; border-radius:50%; }
-</style>
-</head>
-<body>
-<div id="btn"><img src="${iconUrl}" draggable="false" /></div>
-<script>
-  const { ipcRenderer } = require('electron')
-  const btn = document.getElementById('btn')
-
-  let dragStartX = 0, dragStartY = 0
-  let dragging = false
-  const DRAG_THRESHOLD = 6
-
-  btn.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return
-    dragStartX = e.screenX
-    dragStartY = e.screenY
-    dragging = false
-    e.preventDefault()
-  })
-
-  window.addEventListener('mousemove', (e) => {
-    if (e.buttons !== 1) return
-    const dx = e.screenX - dragStartX
-    const dy = e.screenY - dragStartY
-    if (!dragging && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
-      dragging = true
-    }
-    if (dragging) {
-      ipcRenderer.send('trigger:move', e.screenX, e.screenY, dragStartX, dragStartY)
-    }
-  })
-
-  window.addEventListener('mouseup', (e) => {
-    if (e.button !== 0) return
-    if (!dragging) {
-      ipcRenderer.send('trigger:click')
-    } else {
-      ipcRenderer.send('trigger:drag-end')
-    }
-    dragging = false
-  })
-</script>
-</body>
-</html>`
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { app } = require('electron') as typeof import('electron')
+  // In dev, compiled output is at out/main/ — two levels up is the project root
+  return app.isPackaged ? process.resourcesPath : join(__dirname, '../..')
 }
 
 // ── lifecycle ─────────────────────────────────────────────────────────────────
@@ -136,7 +39,8 @@ export function createTriggerWindow(mainWin: BrowserWindow, store: any): void {
     y: pos.y,
     frame: false,
     transparent: true,
-    alwaysOnTop: false,  // regular window — WoW windowed-fullscreen sits below
+    backgroundColor: '#00000000', // fully transparent — prevents white/grey square on Windows
+    alwaysOnTop: true,   // TOPMOST so it floats above WoW; hidden when non-WoW app focused
     skipTaskbar: true,   // no taskbar entry; lifecycle tied to main window
     resizable: false,
     hasShadow: false,
@@ -147,27 +51,68 @@ export function createTriggerWindow(mainWin: BrowserWindow, store: any): void {
     },
   })
 
-  triggerWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildHtml(iconDataUrl()))}`)
+  // Load from a real file so the icon <img src> can resolve relative paths
+  triggerWin.loadFile(join(app_root(), 'static', 'trigger.html'))
   triggerWin.hide() // hidden until overlay mode is active
 
   // Mirror the main window's minimize/restore so the button vanishes
   // when the user minimises Simdragosa and reappears when it's restored.
-  mainWin.on('minimize', () => { if (triggerWin?.isVisible()) triggerWin.hide() })
-  mainWin.on('restore',  () => { /* show handled by showTriggerWindow() call site */ })
+  mainWin.on('minimize', () => {
+    _mainMinimized = true
+    triggerWin?.hide()
+  })
+  mainWin.on('restore', () => {
+    _mainMinimized = false
+    // The monitor's next tick will show the trigger if the foreground is WoW/Electron
+  })
 }
 
+// Track whether overlay mode is active (monitor should be running)
+let _overlayActive = false
+// True while the user has minimised the main window via the OS minimize button
+let _mainMinimized = false
+
 export function showTriggerWindow(): void {
-  // Only show if the main window is also visible (not minimised)
-  if (_mainWin && !_mainWin.isMinimized() && _mainWin.isVisible()) {
-    triggerWin?.show()
-  }
+  _overlayActive = true
+
+  // Start the foreground-window monitor.  The trigger button is TOPMOST but we
+  // only make it visible when WoW (or Simdragosa itself) is in the foreground.
+  // startWowMonitor is idempotent — safe to call multiple times.
+  startWowMonitor((isWow, procName) => {
+    if (!_overlayActive || !triggerWin) return
+
+    // Don't show the trigger if the user minimised the main window via OS chrome
+    if (_mainMinimized) {
+      if (triggerWin.isVisible()) triggerWin.hide()
+      return
+    }
+
+    // Also consider Simdragosa's own process as "allowed"
+    const { app } = require('electron') as typeof import('electron')
+    const ownExe = app.isPackaged
+      ? process.execPath.replace(/\\/g, '/').split('/').pop()!.replace(/\.exe$/i, '').toLowerCase()
+      : 'electron'
+
+    const nameLc = procName.toLowerCase()
+    const allowed = isWow || nameLc === ownExe || nameLc === 'electron'
+
+    if (allowed) {
+      if (!triggerWin.isVisible()) triggerWin.show()
+    } else {
+      if (triggerWin.isVisible()) triggerWin.hide()
+    }
+  })
 }
 
 export function hideTriggerWindow(): void {
+  _overlayActive = false
+  stopWowMonitor()
   triggerWin?.hide()
 }
 
 export function destroyTriggerWindow(): void {
+  _overlayActive = false
+  stopWowMonitor()
   triggerWin?.destroy()
   triggerWin = null
 }
@@ -178,13 +123,12 @@ export function registerTriggerIpc(): void {
   ipcMain.on('trigger:click', () => {
     if (!_mainWin) return
     if (_mainWin.isVisible()) {
-      // Hide both — use the tray icon or system taskbar to restore
+      // Hide only the main window; trigger button stays visible so the user
+      // can click it again to bring the main window back.
       _mainWin.hide()
-      triggerWin?.hide()
     } else {
       _mainWin.show()
       _mainWin.focus()
-      triggerWin?.show()
     }
   })
 

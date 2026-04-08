@@ -4,11 +4,11 @@ import { join } from 'path'
 import type { TooltipRow } from './db'
 
 const DIFF_LUA_KEY: Record<string, string> = {
-  'raid-normal': 'champion',
-  'raid-heroic': 'heroic',
-  'raid-mythic': 'mythic',
-  'dungeon-mythic10': 'mplus',
-  'dungeon-mythic-weekly10': 'mplus_vault',
+  'raid-normal':            'champion',
+  'raid-heroic':            'heroic',
+  'raid-mythic':            'mythic',
+  'dungeon-mythic10':       'heroic',   // M+10 drops = Heroic track
+  'dungeon-mythic-weekly10':'mythic',   // M+10 Vault = Mythic track
 }
 
 export function buildLua(rows: TooltipRow[]): string {
@@ -31,8 +31,10 @@ export function buildLua(rows: TooltipRow[]): string {
   const byChar: Record<string, Record<number, ItemInfo>> = {}
 
   for (const row of rows) {
-    if (!byChar[row.char_name]) byChar[row.char_name] = {}
-    const charItems = byChar[row.char_name]
+    // Key must match what the addon builds: UnitName("player") .. "-" .. GetRealmName():gsub("%s+","")
+    const charKey = `${row.char_name}-${row.realm.replace(/\s+/g, '')}`
+    if (!byChar[charKey]) byChar[charKey] = {}
+    const charItems = byChar[charKey]
     if (!charItems[row.item_id]) {
       charItems[row.item_id] = { specs: {}, ilvl: row.ilvl, name: row.item_name ?? null, updated: row.sim_date }
     }
@@ -70,13 +72,21 @@ export function buildLua(rows: TooltipRow[]): string {
   return lines.join('\n') + '\n'
 }
 
-export function writeLuaFile(lua: string, wowPath: string): void {
+/** Resolves the full path to the addon data file given the WoW retail root.
+ *  e.g.  C:\Games\World of Warcraft\_retail_
+ *        → C:\Games\World of Warcraft\_retail_\Interface\AddOns\Simdragosa\data\SimdragosaData.lua
+ */
+export function resolveAddonDataPath(wowRoot: string): string {
+  return join(wowRoot, 'Interface', 'AddOns', 'Simdragosa', 'data', 'SimdragosaData.lua')
+}
+
+export function writeLuaFile(lua: string, wowRoot: string): void {
   try {
-    const target = join(wowPath, 'SimdragosaData.lua')
-    mkdirSync(wowPath, { recursive: true })
+    const target = resolveAddonDataPath(wowRoot)
+    mkdirSync(join(wowRoot, 'Interface', 'AddOns', 'Simdragosa', 'data'), { recursive: true })
     writeFileSync(target, lua, 'utf-8')
     console.log('[lua] Written to', target)
   } catch (err) {
-    console.warn('[lua] Could not write to', wowPath, ':', err)
+    console.warn('[lua] Could not write to', wowRoot, ':', err)
   }
 }

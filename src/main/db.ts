@@ -54,6 +54,12 @@ export function applySchema(db: Database.Database): void {
       latest_job       TEXT NOT NULL,
       last_success_job TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS item_names (
+      item_id    INTEGER PRIMARY KEY,
+      name       TEXT NOT NULL,
+      fetched_at TEXT NOT NULL
+    );
   `)
 }
 
@@ -138,6 +144,30 @@ export function getJobResults(db: Database.Database): JobResultRow[] {
     latest_job: JSON.parse(row.latest_job),
     last_success_job: row.last_success_job ? JSON.parse(row.last_success_job) : null,
   }))
+}
+
+export function getCachedItemNames(db: Database.Database, itemIds: number[]): Record<number, string> {
+  if (itemIds.length === 0) return {}
+  const placeholders = itemIds.map(() => '?').join(',')
+  const rows = db.prepare(
+    `SELECT item_id, name FROM item_names WHERE item_id IN (${placeholders})`
+  ).all(...itemIds) as { item_id: number; name: string }[]
+  const result: Record<number, string> = {}
+  for (const row of rows) result[row.item_id] = row.name
+  return result
+}
+
+export function upsertItemNames(db: Database.Database, names: Record<number, string>): void {
+  const stmt = db.prepare(`
+    INSERT INTO item_names (item_id, name, fetched_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(item_id) DO UPDATE SET name = excluded.name, fetched_at = excluded.fetched_at
+  `)
+  const today = new Date().toISOString().slice(0, 10)
+  const run = db.transaction((entries: [number, string][]) => {
+    for (const [id, name] of entries) stmt.run(id, name, today)
+  })
+  run(Object.entries(names).map(([id, name]) => [Number(id), name]))
 }
 
 export function initDb(dbPath: string): Database.Database {

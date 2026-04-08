@@ -10,6 +10,9 @@ const api: ElectronAPI = {
   // Settings
   getSettings: () => ipcRenderer.invoke('getSettings'),
   saveSettings: (partial) => ipcRenderer.invoke('saveSettings', partial),
+  getJobResults: () => ipcRenderer.invoke('getJobResults'),
+  fetchItemNames: (itemIds) => ipcRenderer.invoke('fetchItemNames', itemIds),
+  writeLua: () => ipcRenderer.invoke('writeLua'),
 
   // Sim
   startSim: (selections) => ipcRenderer.invoke('startSim', selections),

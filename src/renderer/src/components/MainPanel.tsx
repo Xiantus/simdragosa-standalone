@@ -18,6 +18,7 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
 
   const [selectedChars, setSelectedChars] = useState<string[]>([])
   const [selectedDiffs, setSelectedDiffs] = useState<string[]>(['raid-heroic'])
+  const [luaStatus, setLuaStatus] = useState<{ msg: string; ok: boolean } | null>(null)
 
   useEffect(() => {
     return wireIpcEvents()
@@ -33,9 +34,30 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
     }
   }
 
-  const completed = [...jobs]
-    .filter((j) => ['done', 'error', 'cancelled'].includes(j.status))
-    .sort((a, b) => (b.ended_at ?? 0) - (a.ended_at ?? 0))
+  const handleWriteLua = async () => {
+    setLuaStatus(null)
+    const result = await window.api.writeLua()
+    if (result.ok) {
+      setLuaStatus({ ok: true, msg: `Written to ${result.path}` })
+    } else {
+      setLuaStatus({ ok: false, msg: result.error ?? 'Unknown error' })
+    }
+    setTimeout(() => setLuaStatus(null), 5000)
+  }
+
+  // Deduplicate: newest job per char_id+difficulty+build_label combination
+  const completed = (() => {
+    const all = [...jobs]
+      .filter((j) => ['done', 'error', 'cancelled'].includes(j.status))
+      .sort((a, b) => (b.ended_at ?? 0) - (a.ended_at ?? 0))
+    const seen = new Set<string>()
+    return all.filter((j) => {
+      const key = `${j.char_id}|${j.difficulty}|${j.build_label}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  })()
 
   return (
     <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
@@ -88,10 +110,40 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
       {/* Active jobs */}
       <ActiveJobsStrip running={running} jobs={jobs} />
 
+      {/* Results header */}
+      {completed.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 20px 0', flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>
+            RESULTS
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {luaStatus && (
+              <span style={{ fontSize: 11, color: luaStatus.ok ? 'var(--green)' : 'var(--red)' }}>
+                {luaStatus.msg}
+              </span>
+            )}
+            <button
+              onClick={handleWriteLua}
+              title="Write SimdragosaData.lua to the addon data folder"
+              style={{
+                padding: '4px 12px', borderRadius: 5, fontSize: 12, fontWeight: 600,
+                border: '1px solid var(--border)', background: 'var(--surf2)',
+                color: 'var(--text)', cursor: 'pointer',
+              }}
+            >
+              Export Lua
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Results */}
       <section
         data-testid="results-panel"
-        style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}
+        style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 16px' }}
       >
         {completed.length === 0 ? (
           <div style={{ color: 'var(--sub)', fontSize: 13 }}>

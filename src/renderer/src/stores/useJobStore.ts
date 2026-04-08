@@ -1,15 +1,17 @@
 import { create } from 'zustand'
-import type { Job, JobUpdate, JobDone, JobError, SimSelection } from '../../../shared/ipc'
+import type { Job, JobUpdate, JobDone, JobError, SimSelection, DpsGain } from '../../../shared/ipc'
 
 export interface ActiveJob {
   job_id: string
   char_id: string
   char_name: string
+  spec?: string
   difficulty: string
   build_label: string
   status: Job['status']
   sim_id?: string
   url?: string
+  dps_gains?: DpsGain[]
   error_message?: string
   log_lines: string[]
   started_at: number
@@ -24,6 +26,7 @@ interface JobState {
   handleJobUpdate: (update: JobUpdate) => void
   handleJobDone: (done: JobDone) => void
   handleJobError: (error: JobError) => void
+  loadHistoricalJobs: () => Promise<void>
   wireIpcEvents: () => () => void
 }
 
@@ -88,7 +91,7 @@ export const useJobStore = create<JobState>((set, get) => ({
     set((state) => {
       const jobs = state.jobs.map((j) =>
         j.job_id === done.job_id
-          ? { ...j, status: 'done' as Job['status'], url: done.url, ended_at: Date.now() }
+          ? { ...j, status: 'done' as Job['status'], url: done.url, dps_gains: done.dps_gains, ended_at: Date.now() }
           : j
       )
       return { jobs, running: jobs.some((j) => isActive(j.status)) }
@@ -108,6 +111,43 @@ export const useJobStore = create<JobState>((set, get) => ({
           : j
       )
       return { jobs, running: jobs.some((j) => isActive(j.status)) }
+    })
+  },
+
+  loadHistoricalJobs: async () => {
+    const stored = await window.api.getJobResults()
+    if (!stored || stored.length === 0) return
+    set((state) => {
+      // Skip records that have no proper char_name (old format without metadata)
+      const valid = stored.filter((r) => r && r.job_id && r.char_name && r.char_id)
+
+      // Don't add historical records that duplicate a live-session job
+      // Match on char_id + difficulty + build_label (same logical sim, different run)
+      const existingIds = new Set(state.jobs.map((j) => j.job_id))
+      const existingKeys = new Set(
+        state.jobs.map((j) => `${j.char_id}|${j.difficulty}|${j.build_label}`)
+      )
+
+      const historical: ActiveJob[] = valid
+        .filter((r) => !existingIds.has(r.job_id) && !existingKeys.has(`${r.char_id}|${r.difficulty}|${r.build_label}`))
+        .map((r) => ({
+          job_id: r.job_id,
+          char_id: r.char_id,
+          char_name: r.char_name,
+          spec: r.spec,
+          difficulty: r.difficulty,
+          build_label: r.build_label ?? 'Default',
+          status: r.status as Job['status'],
+          url: r.url,
+          dps_gains: r.dps_gains,
+          error_message: r.error_message,
+          log_lines: [],
+          started_at: r.ended_at ?? 0,
+          ended_at: r.ended_at,
+        }))
+
+      historical.sort((a, b) => (b.ended_at ?? 0) - (a.ended_at ?? 0))
+      return { jobs: [...state.jobs, ...historical] }
     })
   },
 

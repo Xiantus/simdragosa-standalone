@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, net } from 'electron'
 import { join } from 'path'
 import Store from 'electron-store'
-import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows } from './db'
-import { buildLua, writeLuaFile } from './lua-export'
+import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, getJobResults, getCachedItemNames, upsertItemNames } from './db'
+import { buildLua, writeLuaFile, resolveAddonDataPath } from './lua-export'
 import { spawnWorker, cancelAllWorkers, findPython, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
 import { setupAutoUpdater } from './updater'
@@ -76,7 +76,13 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  ipcMain.on('window:minimize', () => mainWindow?.minimize())
+  ipcMain.on('window:minimize', () => {
+    // In overlay mode the window has no taskbar entry, so minimize would make
+    // it unreachable and also kill the trigger button. Hide instead so the
+    // floating trigger button can still be used to bring it back.
+    if (store.get('overlayMode')) mainWindow?.hide()
+    else mainWindow?.minimize()
+  })
   ipcMain.on('window:maximize', () => {
     if (mainWindow?.isMaximized()) mainWindow.unmaximize()
     else mainWindow?.maximize()
@@ -105,6 +111,51 @@ function registerIpcHandlers(): void {
   ipcMain.handle('saveSettings', (_event, partial: Partial<Settings>) => {
     if (partial.raidsid !== undefined) store.set('raidsid', partial.raidsid)
     if (partial.wow_path !== undefined) store.set('wow_path', partial.wow_path)
+  })
+
+  ipcMain.handle('fetchItemNames', async (_event, itemIds: number[]): Promise<Record<number, string>> => {
+    if (!itemIds || itemIds.length === 0) return {}
+
+    // Return cached names immediately; only hit Wowhead for unknowns
+    const cached = getCachedItemNames(db, itemIds)
+    const missing = itemIds.filter((id) => !cached[id])
+
+    if (missing.length > 0) {
+      const fetched: Record<number, string> = {}
+      for (let i = 0; i < missing.length; i++) {
+        const id = missing[i]
+        try {
+          // Use net.fetch (Electron's built-in) — always available in main process
+          const res = await net.fetch(`https://nether.wowhead.com/tooltip/item/${id}`)
+          if (res.ok) {
+            const json = await res.json() as { name?: string }
+            if (json.name) {
+              fetched[id] = json.name
+            } else {
+              console.warn(`[items] No name in Wowhead response for item ${id}:`, JSON.stringify(json).slice(0, 200))
+            }
+          } else {
+            console.warn(`[items] Wowhead returned ${res.status} for item ${id}`)
+          }
+        } catch (err) {
+          console.warn(`[items] Failed to fetch item ${id}:`, err)
+        }
+        // Small delay between requests to be polite to Wowhead
+        if (i < missing.length - 1) await new Promise((r) => setTimeout(r, 80))
+      }
+      if (Object.keys(fetched).length > 0) upsertItemNames(db, fetched)
+      return { ...cached, ...fetched }
+    }
+
+    return cached
+  })
+
+  ipcMain.handle('getJobResults', () => {
+    const rows = getJobResults(db)
+    // Return the latest_job record for each key; fall back to last_success_job
+    return rows
+      .map((r) => r.latest_job ?? r.last_success_job)
+      .filter(Boolean)
   })
 
   // Sim launch (#21)
@@ -161,7 +212,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('setOverlayMode', (_event, enabled: boolean) => {
     store.set('overlayMode', enabled)
     if (enabled) {
-      mainWindow?.setAlwaysOnTop(false)
+      mainWindow?.setAlwaysOnTop(true, 'floating')
       mainWindow?.setSkipTaskbar(true)
       mainWindow?.webContents.send('overlay:changed', true)
       showTriggerWindow()
@@ -182,6 +233,19 @@ function registerIpcHandlers(): void {
   ipcMain.handle('exportLua', () => {
     const rows = getAllTooltipData(db)
     return buildLua(rows)
+  })
+
+  ipcMain.handle('writeLua', () => {
+    const wow_path = store.get('wow_path')
+    if (!wow_path) return { ok: false, error: 'No WoW folder configured in Settings.' }
+    try {
+      const rows = getAllTooltipData(db)
+      const lua = buildLua(rows)
+      writeLuaFile(lua, wow_path)
+      return { ok: true, path: resolveAddonDataPath(wow_path) }
+    } catch (err: any) {
+      return { ok: false, error: String(err?.message ?? err) }
+    }
   })
 
   // Playwright on-demand install (#24)
@@ -264,7 +328,7 @@ app.whenReady().then(() => {
   setupAutoUpdater(mainWindow!)
   if (store.get('alwaysOnTop')) mainWindow!.setAlwaysOnTop(true)
   if (store.get('overlayMode')) {
-    mainWindow!.setAlwaysOnTop(false)
+    mainWindow!.setAlwaysOnTop(true, 'floating')
     mainWindow!.setSkipTaskbar(true)
     showTriggerWindow()
   }

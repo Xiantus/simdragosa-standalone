@@ -63,16 +63,19 @@ export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           <label htmlFor="settings-wowpath" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>
-            WoW SavedVariables Path
+            WoW Retail Folder
           </label>
           <input
             id="settings-wowpath"
             type="text"
             value={wowPath}
             onChange={(e) => setWowPath(e.target.value)}
-            placeholder="optional"
+            placeholder="e.g. C:\Games\World of Warcraft\_retail_"
             style={inputStyle}
           />
+          <span style={{ fontSize: 11, color: 'var(--sub)' }}>
+            Writes to Interface\AddOns\Simdragosa\data\SimdragosaData.lua
+          </span>
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>

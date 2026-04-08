@@ -154,13 +154,19 @@ function handleWorkerEvent(
       dps_gains: event.dps_gains ?? [],
     }
     win.webContents.send('job:done', done)
-    // Persist result to DB
+    // Persist result to DB (include all fields needed to restore the UI on next launch)
     const key = `${spec.character.id}|${spec.difficulty}|${spec.build_label}`
     const record = {
       job_id: spec.job_id,
+      char_id: spec.character.id,
+      char_name: spec.character.name,
+      spec: spec.character.spec,
+      difficulty: spec.difficulty,
+      build_label: spec.build_label,
       url: event.url,
       status: 'done',
       dps_gains: event.dps_gains ?? [],
+      ended_at: Date.now(),
     }
     try { upsertJobResult(db, key, record, record) } catch (_) {}
     if (onDone) onDone(event.dps_gains ?? [], spec.character.name, spec.character.spec, spec.difficulty)

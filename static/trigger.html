@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; user-select:none; }
+  html, body { width:56px; height:56px; background:transparent; overflow:hidden; }
+  #btn {
+    width:56px; height:56px; border-radius:50%;
+    background: rgba(20,18,40,0.92);
+    border: 2px solid rgba(120,100,255,0.6);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.7);
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    overflow:hidden;
+  }
+  #btn:hover {
+    border-color: rgba(160,140,255,0.9);
+    box-shadow: 0 2px 18px rgba(91,76,245,0.6);
+  }
+  #btn img { width:36px; height:36px; object-fit:contain; border-radius:50%; }
+  #btn .fallback {
+    font-size:22px; font-family:serif; color:white; font-weight:bold;
+  }
+</style>
+</head>
+<body>
+<div id="btn">
+  <img id="icon" src="./simdragosa-icon.png" draggable="false"
+       onerror="this.style.display='none'; document.getElementById('fb').style.display='block'" />
+  <span id="fb" class="fallback" style="display:none">S</span>
+</div>
+<script>
+  const { ipcRenderer } = require('electron')
+  const btn = document.getElementById('btn')
+
+  let dragStartX = 0, dragStartY = 0
+  let dragging = false
+  const DRAG_THRESHOLD = 6
+
+  btn.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return
+    dragStartX = e.screenX
+    dragStartY = e.screenY
+    dragging = false
+    e.preventDefault()
+  })
+
+  window.addEventListener('mousemove', (e) => {
+    if (e.buttons !== 1) return
+    const dx = e.screenX - dragStartX
+    const dy = e.screenY - dragStartY
+    if (!dragging && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
+      dragging = true
+    }
+    if (dragging) {
+      ipcRenderer.send('trigger:move', e.screenX, e.screenY, dragStartX, dragStartY)
+    }
+  })
+
+  window.addEventListener('mouseup', (e) => {
+    if (e.button !== 0) return
+    if (!dragging) {
+      ipcRenderer.send('trigger:click')
+    } else {
+      ipcRenderer.send('trigger:drag-end')
+    }
+    dragging = false
+  })
+</script>
+</body>
+</html>
