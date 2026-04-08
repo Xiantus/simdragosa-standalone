@@ -170,8 +170,18 @@ function registerIpcHandlers(): void {
       if (!char) continue
       for (const difficulty of selection.difficulties) {
         const job_id = `${charId}-${difficulty}-${Date.now()}`
+        // Healer sims (QE Live) are temporarily disabled — skip and notify.
+        if (HEALER_SPEC_IDS.has(char.spec_id)) {
+          mainWindow?.webContents.send('job:error', {
+            job_id,
+            char_name: char.name,
+            message: 'Healer sims are not supported yet in this version.',
+          })
+          continue
+        }
+
         const spec: JobSpec = {
-          type: HEALER_SPEC_IDS.has(char.spec_id) ? 'qe' : 'raidbots',
+          type: 'raidbots',
           job_id,
           character: char,
           difficulty,

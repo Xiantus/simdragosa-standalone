@@ -4,7 +4,6 @@ import Sidebar from './components/Sidebar'
 import MainPanel from './components/MainPanel'
 import OnboardingFlow from './components/OnboardingFlow'
 import SettingsPanel from './components/SettingsPanel'
-import PlaywrightInstallModal from './components/PlaywrightInstallModal'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useJobStore } from './stores/useJobStore'
 import './styles/theme.css'
@@ -13,26 +12,15 @@ export default function App(): JSX.Element {
   const { is_configured, raidsid, wow_path, fetchSettings } = useSettingsStore()
   const loadHistoricalJobs = useJobStore((s) => s.loadHistoricalJobs)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [playwrightOpen, setPlaywrightOpen] = useState(false)
-  const [playwrightInstalled, setPlaywrightInstalled] = useState(true)
   const [overlayMode, setOverlayMode] = useState(false)
 
   useEffect(() => {
     fetchSettings()
     loadHistoricalJobs()
-    window.api.isPlaywrightInstalled().then((installed) => {
-      setPlaywrightInstalled(installed)
-    })
     window.api.getOverlayMode().then(setOverlayMode)
     const unsubscribe = window.api.onOverlayChanged((enabled) => setOverlayMode(enabled))
     return unsubscribe
   }, [])
-
-  const handlePlaywrightClose = () => {
-    setPlaywrightOpen(false)
-    // Re-check if it's now installed
-    window.api.isPlaywrightInstalled().then(setPlaywrightInstalled)
-  }
 
   return (
     <div
@@ -42,10 +30,7 @@ export default function App(): JSX.Element {
       <TitleBar onSettingsClick={() => setSettingsOpen(true)} />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <Sidebar />
-        <MainPanel
-          playwrightInstalled={playwrightInstalled}
-          onInstallPlaywright={() => setPlaywrightOpen(true)}
-        />
+        <MainPanel />
       </div>
 
       <OnboardingFlow
@@ -58,11 +43,6 @@ export default function App(): JSX.Element {
         raidsid={raidsid}
         wow_path={wow_path}
         onClose={() => { setSettingsOpen(false); fetchSettings() }}
-      />
-
-      <PlaywrightInstallModal
-        open={playwrightOpen}
-        onClose={handlePlaywrightClose}
       />
     </div>
   )

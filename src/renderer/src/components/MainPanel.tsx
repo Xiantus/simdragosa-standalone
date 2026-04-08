@@ -81,31 +81,7 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
         <RunButton disabled={!canRun} running={running} onClick={handleGo} />
       </section>
 
-      {/* Playwright missing banner */}
-      {!playwrightInstalled && (
-        <div
-          data-testid="playwright-banner"
-          style={{
-            padding: '8px 20px', background: 'var(--yellow-bg, #2a2000)',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
-          }}
-        >
-          <span style={{ fontSize: 12, color: 'var(--yellow, #f0b429)', flex: 1 }}>
-            Browser not installed — Simdragosa needs Playwright's Chromium to run sims.
-          </span>
-          <button
-            onClick={onInstallPlaywright}
-            style={{
-              padding: '4px 12px', borderRadius: 5, border: 'none',
-              background: 'var(--accent)', color: '#fff', cursor: 'pointer',
-              fontSize: 12, fontWeight: 600, flexShrink: 0,
-            }}
-          >
-            Install Browser
-          </button>
-        </div>
-      )}
+      {/* Playwright install banner intentionally hidden — healer sims not yet supported */}
 
       {/* Active jobs */}
       <ActiveJobsStrip running={running} jobs={jobs} />
