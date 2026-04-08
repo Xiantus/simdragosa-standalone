@@ -50,6 +50,12 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Sync package.json version from git tag
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          npm version $version --no-git-tag-version
+        shell: pwsh
+
       - name: Run tests
         run: |
           npm test
