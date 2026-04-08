@@ -124,8 +124,11 @@ export default function CharacterModal({ open, character, onClose, onSave }: Pro
     character ? { ...character } : blank()
   )
 
+  const [simcFilled, setSimcFilled] = useState<string[]>([])
+
   useEffect(() => {
     setForm(character ? { ...character } : blank())
+    setSimcFilled([])
   }, [character, open])
 
   if (!open) return null
@@ -141,8 +144,6 @@ export default function CharacterModal({ open, character, onClose, onSave }: Pro
       spec: found ? found.name.split(' ')[0] : f.spec,
     }))
   }
-
-  const [simcFilled, setSimcFilled] = useState<string[]>([])
 
   const handleSimcChange = (raw: string) => {
     setField('simc_string', raw)
