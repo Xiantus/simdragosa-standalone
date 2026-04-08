@@ -58,6 +58,8 @@ export function applySchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS item_names (
       item_id    INTEGER PRIMARY KEY,
       name       TEXT NOT NULL,
+      icon       TEXT,
+      source     TEXT,
       fetched_at TEXT NOT NULL
     );
   `)
@@ -146,28 +148,42 @@ export function getJobResults(db: Database.Database): JobResultRow[] {
   }))
 }
 
-export function getCachedItemNames(db: Database.Database, itemIds: number[]): Record<number, string> {
+export interface ItemData {
+  name: string
+  icon?: string | null
+  source?: string | null
+}
+
+/** Migrate existing item_names rows — add icon/source columns if not yet present. */
+export function migrateItemNames(db: Database.Database): void {
+  try { db.exec('ALTER TABLE item_names ADD COLUMN icon TEXT') } catch (_) {}
+  try { db.exec('ALTER TABLE item_names ADD COLUMN source TEXT') } catch (_) {}
+}
+
+export function getCachedItemNames(db: Database.Database, itemIds: number[]): Record<number, ItemData> {
   if (itemIds.length === 0) return {}
   const placeholders = itemIds.map(() => '?').join(',')
   const rows = db.prepare(
-    `SELECT item_id, name FROM item_names WHERE item_id IN (${placeholders})`
-  ).all(...itemIds) as { item_id: number; name: string }[]
-  const result: Record<number, string> = {}
-  for (const row of rows) result[row.item_id] = row.name
+    `SELECT item_id, name, icon, source FROM item_names WHERE item_id IN (${placeholders})`
+  ).all(...itemIds) as { item_id: number; name: string; icon: string | null; source: string | null }[]
+  const result: Record<number, ItemData> = {}
+  for (const row of rows) result[row.item_id] = { name: row.name, icon: row.icon, source: row.source }
   return result
 }
 
-export function upsertItemNames(db: Database.Database, names: Record<number, string>): void {
+export function upsertItemNames(db: Database.Database, items: Record<number, ItemData>): void {
   const stmt = db.prepare(`
-    INSERT INTO item_names (item_id, name, fetched_at)
-    VALUES (?, ?, ?)
-    ON CONFLICT(item_id) DO UPDATE SET name = excluded.name, fetched_at = excluded.fetched_at
+    INSERT INTO item_names (item_id, name, icon, source, fetched_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(item_id) DO UPDATE SET
+      name = excluded.name, icon = excluded.icon,
+      source = excluded.source, fetched_at = excluded.fetched_at
   `)
   const today = new Date().toISOString().slice(0, 10)
-  const run = db.transaction((entries: [number, string][]) => {
-    for (const [id, name] of entries) stmt.run(id, name, today)
+  const run = db.transaction((entries: [number, ItemData][]) => {
+    for (const [id, d] of entries) stmt.run(id, d.name, d.icon ?? null, d.source ?? null, today)
   })
-  run(Object.entries(names).map(([id, name]) => [Number(id), name]))
+  run(Object.entries(items).map(([id, d]) => [Number(id), d]))
 }
 
 export function initDb(dbPath: string): Database.Database {

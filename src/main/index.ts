@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, net } from 'electron'
 import { join } from 'path'
 import Store from 'electron-store'
-import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, getJobResults, getCachedItemNames, upsertItemNames } from './db'
+import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, getJobResults, getCachedItemNames, upsertItemNames, migrateItemNames, type ItemData } from './db'
 import { buildLua, writeLuaFile, resolveAddonDataPath } from './lua-export'
 import { spawnWorker, cancelAllWorkers, findPython, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
@@ -33,6 +33,26 @@ const HEALER_SPEC_IDS = new Set([65, 105, 256, 257, 264, 270, 1468])
 
 let mainWindow: BrowserWindow | null = null
 let db: ReturnType<typeof initDb>
+
+/** Pull "Dropped by / Drops from / Quest" source text out of Wowhead's tooltip HTML. */
+function extractWowheadSource(html: string): string | null {
+  const text = html
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const patterns = [
+    /Dropped?\s+by:\s*([^.]+?)(?:\s{2,}|Drop|Quest|Sold|$)/i,
+    /Drops?\s+from:\s*([^.]+?)(?:\s{2,}|Drop|Quest|Sold|$)/i,
+    /Drops?\s+in:\s*([^.]+?)(?:\s{2,}|Drop|Quest|Sold|$)/i,
+  ]
+  for (const re of patterns) {
+    const m = text.match(re)
+    if (m) return m[1].trim().replace(/\s+/g, ' ')
+  }
+  return null
+}
 
 function createWindow(): void {
   const bounds = store.get('windowBounds')
@@ -121,26 +141,27 @@ function registerIpcHandlers(): void {
     if (partial.wow_path !== undefined) store.set('wow_path', partial.wow_path)
   })
 
-  ipcMain.handle('fetchItemNames', async (_event, itemIds: number[]): Promise<Record<number, string>> => {
+  ipcMain.handle('fetchItemNames', async (_event, itemIds: number[]): Promise<Record<number, ItemData>> => {
     if (!itemIds || itemIds.length === 0) return {}
 
-    // Return cached names immediately; only hit Wowhead for unknowns
+    // Return cached data immediately; only hit Wowhead for unknowns
     const cached = getCachedItemNames(db, itemIds)
     const missing = itemIds.filter((id) => !cached[id])
 
     if (missing.length > 0) {
-      const fetched: Record<number, string> = {}
+      const fetched: Record<number, ItemData> = {}
       for (let i = 0; i < missing.length; i++) {
         const id = missing[i]
         try {
-          // Use net.fetch (Electron's built-in) — always available in main process
           const res = await net.fetch(`https://nether.wowhead.com/tooltip/item/${id}`)
           if (res.ok) {
-            const json = await res.json() as { name?: string }
+            const json = await res.json() as { name?: string; icon?: string; tooltip?: string }
             if (json.name) {
-              fetched[id] = json.name
-            } else {
-              console.warn(`[items] No name in Wowhead response for item ${id}:`, JSON.stringify(json).slice(0, 200))
+              fetched[id] = {
+                name: json.name,
+                icon: json.icon ?? null,
+                source: json.tooltip ? extractWowheadSource(json.tooltip) : null,
+              }
             }
           } else {
             console.warn(`[items] Wowhead returned ${res.status} for item ${id}`)
@@ -148,7 +169,6 @@ function registerIpcHandlers(): void {
         } catch (err) {
           console.warn(`[items] Failed to fetch item ${id}:`, err)
         }
-        // Small delay between requests to be polite to Wowhead
         if (i < missing.length - 1) await new Promise((r) => setTimeout(r, 80))
       }
       if (Object.keys(fetched).length > 0) upsertItemNames(db, fetched)
@@ -381,6 +401,7 @@ function registerIpcHandlers(): void {
 
 app.whenReady().then(() => {
   db = initDb(join(app.getPath('userData'), 'simdragosa.db'))
+  migrateItemNames(db)
   registerIpcHandlers()
   registerTriggerIpc()
   createWindow()

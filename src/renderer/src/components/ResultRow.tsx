@@ -14,19 +14,93 @@ interface Props {
   job: ActiveJob
 }
 
+interface ItemMeta { name: string; icon?: string | null; source?: string | null }
+
+function ItemTooltip({ itemId, icon, name, source, ilvl }: {
+  itemId: number; icon?: string | null; name: string; source?: string | null; ilvl?: number | null
+}): JSX.Element {
+  const [hovered, setHovered] = useState(false)
+  const [pos, setPos] = useState({ x: 0, y: 0 })
+
+  const iconUrl = icon
+    ? `https://wow.zamimg.com/images/wow/icons/medium/${icon}.jpg`
+    : null
+
+  return (
+    <div
+      style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}
+      onMouseEnter={(e) => { setHovered(true); setPos({ x: e.clientX, y: e.clientY }) }}
+      onMouseMove={(e) => setPos({ x: e.clientX, y: e.clientY })}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Item label */}
+      <a
+        href={`https://www.wowhead.com/item=${itemId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: 'var(--text)', textDecoration: hovered ? 'underline' : 'none', cursor: 'pointer' }}
+      >
+        {name}
+      </a>
+      {ilvl != null && <span style={{ color: 'var(--sub)', marginLeft: 4 }}>({ilvl})</span>}
+
+      {/* Floating tooltip */}
+      {hovered && (
+        <div style={{
+          position: 'fixed',
+          left: pos.x + 14,
+          top: pos.y - 8,
+          zIndex: 9999,
+          background: '#1a1a2e',
+          border: '1px solid #a855f7',
+          borderRadius: 8,
+          padding: '8px 10px',
+          minWidth: 180,
+          maxWidth: 260,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.7)',
+          pointerEvents: 'none',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            {iconUrl && (
+              <img
+                src={iconUrl}
+                width={36} height={36}
+                style={{ borderRadius: 4, border: '1px solid #333', flexShrink: 0 }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+              />
+            )}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#a855f7', lineHeight: 1.3 }}>{name}</div>
+              {ilvl != null && (
+                <div style={{ fontSize: 11, color: 'var(--sub)', marginTop: 2 }}>Item Level {ilvl}</div>
+              )}
+              {source && (
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, lineHeight: 1.4 }}>
+                  📍 {source}
+                </div>
+              )}
+              <div style={{ fontSize: 10, color: '#475569', marginTop: 5 }}>Click to open on Wowhead</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DpsGainBars({ gains }: { gains: DpsGain[] }): JSX.Element {
-  const [names, setNames] = useState<Record<number, string>>({})
+  const [meta, setMeta] = useState<Record<number, ItemMeta>>({})
 
   useEffect(() => {
     const unknownIds = gains
       .filter((g) => !g.item_name)
       .map((g) => g.item_id)
-      .filter((id, i, arr) => arr.indexOf(id) === i) // dedupe
+      .filter((id, i, arr) => arr.indexOf(id) === i)
 
     if (unknownIds.length === 0) return
 
     window.api.fetchItemNames(unknownIds).then((result) => {
-      if (Object.keys(result).length > 0) setNames(result)
+      if (Object.keys(result).length > 0) setMeta(result)
     }).catch(() => {})
   }, [gains])
 
@@ -38,35 +112,24 @@ function DpsGainBars({ gains }: { gains: DpsGain[] }): JSX.Element {
       {sorted.map((g) => {
         const pct = Math.max(4, (g.dps_gain / maxGain) * 100)
         const hue = 260 - (sorted.indexOf(g) / Math.max(sorted.length - 1, 1)) * 80
-        const rawName = g.item_name ?? names[g.item_id]
-        const label = rawName
-          ? rawName.replace(/_/g, ' ')
-          : `Item #${g.item_id}`
+        const itemMeta = meta[g.item_id]
+        const rawName = g.item_name ?? itemMeta?.name
+        const label = rawName ? rawName.replace(/_/g, ' ') : `Item #${g.item_id}`
 
         return (
           <div key={`${g.item_id}-${g.dps_gain}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Item name + ilvl — Wowhead link triggers their tooltip widget on hover */}
+            {/* Item name + ilvl */}
             <div style={{
               width: 160, fontSize: 11,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0,
             }}>
-              <a
-                href={`https://www.wowhead.com/item=${g.item_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: 'var(--text)',
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
-                onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none' }}
-              >
-                {label}
-              </a>
-              {g.ilvl != null && (
-                <span style={{ color: 'var(--sub)', marginLeft: 4 }}>({g.ilvl})</span>
-              )}
+              <ItemTooltip
+                itemId={g.item_id}
+                icon={itemMeta?.icon}
+                name={label}
+                source={itemMeta?.source}
+                ilvl={g.ilvl}
+              />
             </div>
 
             {/* Bar */}
