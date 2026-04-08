@@ -176,7 +176,8 @@ export default function CharacterModal({ open, character, onClose, onSave }: Pro
     <div
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 10000,  // above Wowhead tooltips (9999)
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
@@ -185,12 +186,30 @@ export default function CharacterModal({ open, character, onClose, onSave }: Pro
         onSubmit={handleSubmit}
         style={{
           background: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 10,
-          padding: 24, width: 480, display: 'flex', flexDirection: 'column', gap: 14,
+          padding: 24, width: 500, maxHeight: '90vh', overflowY: 'auto',
+          display: 'flex', flexDirection: 'column', gap: 14,
         }}
       >
-        <h3 style={{ color: 'var(--text)', fontSize: 15, fontWeight: 700 }}>
-          {character ? 'Edit Character' : 'Add Character'}
-        </h3>
+        {/* Header row with title + close button */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 style={{ color: 'var(--text)', fontSize: 15, fontWeight: 700 }}>
+            {character ? 'Edit Character' : 'Add Character'}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            title="Close"
+            style={{
+              background: 'transparent', border: 'none', color: 'var(--sub)',
+              cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px',
+              borderRadius: 4,
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--sub)' }}
+          >
+            ✕
+          </button>
+        </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label htmlFor="field-name" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>Name</label>
@@ -257,8 +276,15 @@ export default function CharacterModal({ open, character, onClose, onSave }: Pro
             value={form.simc_string}
             onChange={(e) => handleSimcChange(e.target.value)}
             placeholder="Paste your SimC export here — name, realm, region and spec will be filled automatically"
-            rows={5}
-            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: 11 }}
+            rows={8}
+            style={{
+              ...inputStyle,
+              resize: 'vertical',
+              fontFamily: 'monospace',
+              fontSize: 11,
+              userSelect: 'text',   // override body's user-select:none so text is selectable
+              WebkitUserSelect: 'text',
+            }}
           />
         </div>
 
@@ -275,6 +301,8 @@ const inputStyle: React.CSSProperties = {
   background: 'var(--surf2)', border: '1px solid var(--border)', borderRadius: 5,
   color: 'var(--text)', padding: '6px 10px', fontSize: 13, width: '100%',
   outline: 'none',
+  userSelect: 'text',        // body sets user-select:none globally; override for inputs
+  WebkitUserSelect: 'text',
 }
 const primaryBtn: React.CSSProperties = {
   background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 5,
