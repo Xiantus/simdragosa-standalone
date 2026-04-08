@@ -46,19 +46,19 @@ function DpsGainBars({ gains }: { gains: DpsGain[] }): JSX.Element {
 
         return (
           <div key={`${g.item_id}-${g.dps_gain}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Item name — data-wowhead triggers power.js tooltip on hover without
-                any click navigation; click explicitly opens Wowhead in system browser */}
+            {/* Item name — Wowhead link; power.js intercepts hover for full tooltip */}
             <div style={{
               width: 160, fontSize: 11,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0,
             }}>
-              <span
-                data-wowhead={`item=${g.item_id}`}
-                onClick={() => window.open(`https://www.wowhead.com/item=${g.item_id}`, '_blank')}
-                style={{ color: 'var(--text)', cursor: 'pointer' }}
+              <a
+                href={`https://www.wowhead.com/item=${g.item_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--text)', textDecoration: 'none', cursor: 'pointer' }}
               >
                 {label}
-              </span>
+              </a>
               {g.ilvl != null && (
                 <span style={{ color: 'var(--sub)', marginLeft: 4 }}>({g.ilvl})</span>
               )}
