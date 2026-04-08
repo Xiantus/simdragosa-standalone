@@ -249,16 +249,22 @@ function registerIpcHandlers(): void {
   })
 
   // Playwright on-demand install (#24)
-  // Uses Python playwright to drive Raidbots; check/install via `python -m playwright`
+  // In packaged mode worker.exe bundles Python+playwright and handles install
+  // itself via --check-playwright / --install-playwright CLI args, so no
+  // system Python is required.  In dev mode we fall back to system Python.
   ipcMain.handle('isPlaywrightInstalled', (): boolean => {
     try {
       const { execFileSync } = require('child_process') as typeof import('child_process')
-      const py = findPython()
-      // `python -m playwright install --dry-run chromium` exits 0 when already installed
-      execFileSync(py, ['-m', 'playwright', 'install', '--dry-run', 'chromium'], {
-        stdio: 'pipe',
-        timeout: 10_000,
-      })
+      if (app.isPackaged) {
+        const workerPath = join(process.resourcesPath, 'worker.exe')
+        execFileSync(workerPath, ['--check-playwright'], { stdio: 'pipe', timeout: 15_000 })
+      } else {
+        const py = findPython()
+        execFileSync(py, ['-m', 'playwright', 'install', '--dry-run', 'chromium'], {
+          stdio: 'pipe',
+          timeout: 10_000,
+        })
+      }
       return true
     } catch {
       return false
@@ -267,20 +273,17 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('installPlaywright', async () => {
     const { spawn } = require('child_process') as typeof import('child_process')
-    const py = findPython()
 
-    // Helper: run a child process and stream output as progress events
-    const runStep = (args: string[], basePercent: number, maxPercent: number) =>
+    // Helper: run a child and stream plain-text lines as progress events
+    const runTextStep = (cmd: string, args: string[], basePercent: number, maxPercent: number) =>
       new Promise<void>((resolve, reject) => {
-        const child = spawn(py, args, { stdio: ['ignore', 'pipe', 'pipe'] })
-
+        const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] })
         let stepPercent = basePercent
         const parseProgress = (text: string) => {
           const line = text.trim()
           if (!line) return
           const pctMatch = line.match(/(\d+)%/)
           if (pctMatch) {
-            // Scale inner percentage into our range
             const inner = parseInt(pctMatch[1], 10)
             stepPercent = basePercent + Math.round((inner / 100) * (maxPercent - basePercent))
           } else {
@@ -288,7 +291,6 @@ function registerIpcHandlers(): void {
           }
           mainWindow?.webContents.send('playwright:progress', { percent: stepPercent, message: line })
         }
-
         let buf = ''
         child.stdout?.on('data', (chunk: Buffer) => {
           buf += chunk.toString()
@@ -301,20 +303,61 @@ function registerIpcHandlers(): void {
         })
         child.on('close', (code) => {
           if (code === 0) resolve()
-          else reject(new Error(`${args.join(' ')} exited with code ${code}`))
+          else reject(new Error(`Process exited with code ${code}`))
         })
         child.on('error', reject)
       })
 
-    // Step 1 (0–30%): pip install playwright (installs the Python package)
-    mainWindow?.webContents.send('playwright:progress', { percent: 0, message: 'Installing playwright Python package…' })
-    await runStep(['-m', 'pip', 'install', '--upgrade', 'playwright'], 0, 30)
-
-    // Step 2 (30–100%): playwright install chromium (downloads the browser)
-    mainWindow?.webContents.send('playwright:progress', { percent: 30, message: 'Downloading Chromium browser…' })
-    await runStep(['-m', 'playwright', 'install', 'chromium'], 30, 100)
-
-    mainWindow?.webContents.send('playwright:progress', { percent: 100, message: 'Chromium installed successfully.' })
+    if (app.isPackaged) {
+      // worker.exe has playwright bundled — it downloads chromium directly,
+      // emitting JSON progress events on stdout.
+      const workerPath = join(process.resourcesPath, 'worker.exe')
+      mainWindow?.webContents.send('playwright:progress', { percent: 0, message: 'Preparing Chromium download…' })
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(workerPath, ['--install-playwright'], { stdio: ['ignore', 'pipe', 'pipe'] })
+        let buf = ''
+        child.stdout?.on('data', (chunk: Buffer) => {
+          buf += chunk.toString()
+          const lines = buf.split('\n')
+          buf = lines.pop() ?? ''
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed) continue
+            try {
+              const event = JSON.parse(trimmed)
+              if (event.type === 'progress') {
+                mainWindow?.webContents.send('playwright:progress', {
+                  percent: event.percent ?? 50,
+                  message: event.message ?? '',
+                })
+              } else if (event.type === 'done') {
+                mainWindow?.webContents.send('playwright:progress', { percent: 100, message: event.message ?? 'Done.' })
+              } else if (event.type === 'error') {
+                reject(new Error(event.message))
+              }
+            } catch (_) {
+              // non-JSON line — ignore
+            }
+          }
+        })
+        child.stderr?.on('data', (chunk: Buffer) => {
+          process.stdout.write(`[playwright-install] ${chunk.toString()}`)
+        })
+        child.on('close', (code) => {
+          if (code === 0) resolve()
+          else reject(new Error(`Installation exited with code ${code}`))
+        })
+        child.on('error', reject)
+      })
+    } else {
+      // Dev mode: use system Python
+      const py = findPython()
+      mainWindow?.webContents.send('playwright:progress', { percent: 0, message: 'Installing playwright Python package…' })
+      await runTextStep(py, ['-m', 'pip', 'install', '--upgrade', 'playwright'], 0, 30)
+      mainWindow?.webContents.send('playwright:progress', { percent: 30, message: 'Downloading Chromium browser…' })
+      await runTextStep(py, ['-m', 'playwright', 'install', 'chromium'], 30, 100)
+      mainWindow?.webContents.send('playwright:progress', { percent: 100, message: 'Chromium installed successfully.' })
+    }
   })
 }
 

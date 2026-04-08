@@ -348,5 +348,80 @@ def main() -> int:
         return 1
 
 
+# ---------------------------------------------------------------------------
+# Playwright install / check helpers (used in packaged app via CLI args)
+# ---------------------------------------------------------------------------
+
+def _playwright_driver():
+    """Return (driver_executable_path, env) or raise ImportError."""
+    from playwright._impl._driver import compute_driver_executable, get_driver_env  # type: ignore
+    return compute_driver_executable(), get_driver_env()
+
+
+def install_playwright_main() -> int:
+    """Download Playwright Chromium. Emits JSON progress events to stdout."""
+    import subprocess
+    try:
+        driver_exe, env = _playwright_driver()
+    except ImportError:
+        print(json.dumps({"type": "error", "message": "Playwright is not bundled in this build."}), flush=True)
+        return 1
+
+    try:
+        print(json.dumps({"type": "progress", "percent": 5, "message": "Starting Chromium download…"}), flush=True)
+        proc = subprocess.Popen(
+            [str(driver_exe), "install", "chromium"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert proc.stdout is not None
+        percent = 5
+        for line in iter(proc.stdout.readline, ""):
+            line = line.strip()
+            if not line:
+                continue
+            m = __import__("re").search(r"(\d+)%", line)
+            if m:
+                inner = int(m.group(1))
+                percent = 5 + round(inner * 0.9)
+            else:
+                percent = min(percent + 1, 94)
+            print(json.dumps({"type": "progress", "percent": percent, "message": line}), flush=True)
+        proc.wait()
+        if proc.returncode == 0:
+            print(json.dumps({"type": "done", "percent": 100, "message": "Chromium installed successfully."}), flush=True)
+            return 0
+        else:
+            print(json.dumps({"type": "error", "message": f"Driver exited with code {proc.returncode}"}), flush=True)
+            return 1
+    except Exception as exc:
+        print(json.dumps({"type": "error", "message": str(exc)}), flush=True)
+        return 1
+
+
+def check_playwright_main() -> int:
+    """Exit 0 if Playwright Chromium is already installed, 1 otherwise."""
+    import subprocess
+    try:
+        driver_exe, env = _playwright_driver()
+        result = subprocess.run(
+            [str(driver_exe), "install", "--dry-run", "chromium"],
+            capture_output=True,
+            env=env,
+            timeout=15,
+        )
+        return 0 if result.returncode == 0 else 1
+    except Exception:
+        return 1
+
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--install-playwright":
+        sys.exit(install_playwright_main())
+    if len(sys.argv) > 1 and sys.argv[1] == "--check-playwright":
+        sys.exit(check_playwright_main())
     sys.exit(main())

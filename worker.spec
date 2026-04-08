@@ -9,11 +9,19 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
+# Bundle playwright's driver binary so worker.exe can install Chromium
+# without requiring system Python.  collect_data_files picks up the Node-based
+# playwright.cmd / playwright driver directory shipped with the Python package.
+try:
+    _playwright_datas = collect_data_files('playwright', include_py_files=False)
+except Exception:
+    _playwright_datas = []
+
 a = Analysis(
     ['python/worker.py'],
     pathex=['python'],
     binaries=[],
-    datas=[],
+    datas=_playwright_datas,
     hiddenimports=[
         'requests',
         'requests.adapters',
