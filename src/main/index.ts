@@ -97,6 +97,29 @@ function createWindow(): void {
     }
   })
 
+  // Wowhead's tooltip API rejects requests with Origin: null (file:// pages).
+  // Spoof the origin so power.js tooltips work in the Electron renderer.
+  const wowheadHosts = ['*://nether.wowhead.com/*', '*://wow.zamimg.com/*']
+  mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: wowheadHosts },
+    (details, callback) => {
+      details.requestHeaders['Origin'] = 'https://www.wowhead.com'
+      details.requestHeaders['Referer'] = 'https://www.wowhead.com/'
+      callback({ requestHeaders: details.requestHeaders })
+    }
+  )
+  mainWindow.webContents.session.webRequest.onHeadersReceived(
+    { urls: wowheadHosts },
+    (details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'access-control-allow-origin': ['*'],
+        },
+      })
+    }
+  )
+
   const isDev = !app.isPackaged
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])

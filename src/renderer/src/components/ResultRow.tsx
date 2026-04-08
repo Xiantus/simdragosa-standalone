@@ -16,78 +16,6 @@ interface Props {
 
 interface ItemMeta { name: string; icon?: string | null; source?: string | null }
 
-function ItemTooltip({ itemId, icon, name, source, ilvl }: {
-  itemId: number; icon?: string | null; name: string; source?: string | null; ilvl?: number | null
-}): JSX.Element {
-  const [hovered, setHovered] = useState(false)
-  const [pos, setPos] = useState({ x: 0, y: 0 })
-
-  const iconUrl = icon
-    ? `https://wow.zamimg.com/images/wow/icons/medium/${icon}.jpg`
-    : null
-
-  return (
-    <div
-      style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}
-      onMouseEnter={(e) => { setHovered(true); setPos({ x: e.clientX, y: e.clientY }) }}
-      onMouseMove={(e) => setPos({ x: e.clientX, y: e.clientY })}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {/* Item label */}
-      <a
-        href={`https://www.wowhead.com/item=${itemId}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: 'var(--text)', textDecoration: hovered ? 'underline' : 'none', cursor: 'pointer' }}
-      >
-        {name}
-      </a>
-      {ilvl != null && <span style={{ color: 'var(--sub)', marginLeft: 4 }}>({ilvl})</span>}
-
-      {/* Floating tooltip */}
-      {hovered && (
-        <div style={{
-          position: 'fixed',
-          left: pos.x + 14,
-          top: pos.y - 8,
-          zIndex: 9999,
-          background: '#1a1a2e',
-          border: '1px solid #a855f7',
-          borderRadius: 8,
-          padding: '8px 10px',
-          minWidth: 180,
-          maxWidth: 260,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.7)',
-          pointerEvents: 'none',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-            {iconUrl && (
-              <img
-                src={iconUrl}
-                width={36} height={36}
-                style={{ borderRadius: 4, border: '1px solid #333', flexShrink: 0 }}
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-              />
-            )}
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#a855f7', lineHeight: 1.3 }}>{name}</div>
-              {ilvl != null && (
-                <div style={{ fontSize: 11, color: 'var(--sub)', marginTop: 2 }}>Item Level {ilvl}</div>
-              )}
-              {source && (
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, lineHeight: 1.4 }}>
-                  📍 {source}
-                </div>
-              )}
-              <div style={{ fontSize: 10, color: '#475569', marginTop: 5 }}>Click to open on Wowhead</div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function DpsGainBars({ gains }: { gains: DpsGain[] }): JSX.Element {
   const [meta, setMeta] = useState<Record<number, ItemMeta>>({})
 
@@ -118,18 +46,22 @@ function DpsGainBars({ gains }: { gains: DpsGain[] }): JSX.Element {
 
         return (
           <div key={`${g.item_id}-${g.dps_gain}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Item name + ilvl */}
+            {/* Item name — Wowhead link; power.js intercepts hover for full tooltip */}
             <div style={{
               width: 160, fontSize: 11,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0,
             }}>
-              <ItemTooltip
-                itemId={g.item_id}
-                icon={itemMeta?.icon}
-                name={label}
-                source={itemMeta?.source}
-                ilvl={g.ilvl}
-              />
+              <a
+                href={`https://www.wowhead.com/item=${g.item_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--text)', textDecoration: 'none', cursor: 'pointer' }}
+              >
+                {label}
+              </a>
+              {g.ilvl != null && (
+                <span style={{ color: 'var(--sub)', marginLeft: 4 }}>({g.ilvl})</span>
+              )}
             </div>
 
             {/* Bar */}
