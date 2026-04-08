@@ -105,6 +105,11 @@ export interface ElectronAPI {
   saveSettings: (partial: Partial<Settings>) => Promise<void>
   getJobResults: () => Promise<StoredResult[]>
   fetchItemNames: (itemIds: number[]) => Promise<Record<number, { name: string; icon?: string | null; source?: string | null }>>
+  checkForUpdates: () => Promise<
+    | { status: 'up-to-date'; currentVersion: string }
+    | { status: 'available'; version: string }
+    | { status: 'error'; message: string }
+  >
   writeLua: () => Promise<{ ok: boolean; path?: string; error?: string }>
   startSim: (selections: SimSelection) => Promise<void>
   cancelJobs: () => Promise<void>

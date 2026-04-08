@@ -23,6 +23,9 @@ const api: ElectronAPI = {
   installPlaywright: () => ipcRenderer.invoke('installPlaywright'),
   isPlaywrightInstalled: () => ipcRenderer.invoke('isPlaywrightInstalled'),
 
+  // Updates
+  checkForUpdates: () => ipcRenderer.invoke('checkForUpdates'),
+
   // Window controls
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   maximizeWindow: () => ipcRenderer.send('window:maximize'),
