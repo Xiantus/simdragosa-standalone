@@ -45,12 +45,25 @@ function DpsGainBars({ gains }: { gains: DpsGain[] }): JSX.Element {
 
         return (
           <div key={`${g.item_id}-${g.dps_gain}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Item name + ilvl */}
+            {/* Item name + ilvl — Wowhead link triggers their tooltip widget on hover */}
             <div style={{
-              width: 160, fontSize: 11, color: 'var(--text)',
+              width: 160, fontSize: 11,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0,
             }}>
-              {label}
+              <a
+                href={`https://www.wowhead.com/item=${g.item_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: 'var(--text)',
+                  textDecoration: 'none',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
+                onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none' }}
+              >
+                {label}
+              </a>
               {g.ilvl != null && (
                 <span style={{ color: 'var(--sub)', marginLeft: 4 }}>({g.ilvl})</span>
               )}

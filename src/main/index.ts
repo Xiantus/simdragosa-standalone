@@ -69,6 +69,14 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Prevent any external link from navigating the main window itself
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('file://') && !url.startsWith('http://localhost')) {
+      e.preventDefault()
+      shell.openExternal(url)
+    }
+  })
+
   const isDev = !app.isPackaged
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
