@@ -354,44 +354,62 @@ def main() -> int:
 
 def _playwright_driver():
     """Return (cmd_list, env) for running the playwright driver, or raise RuntimeError."""
-    import os
+    import glob
     import pathlib
     from playwright._impl._driver import get_driver_env  # type: ignore
 
     env = get_driver_env()
+    driver_path: pathlib.Path | None = None
 
-    # 1. Try standard path computation (works in normal Python environments).
+    # 1. Try standard path computation (works in normal Python installs).
     try:
         from playwright._impl._driver import compute_driver_executable  # type: ignore
         candidate = pathlib.Path(compute_driver_executable())
         if candidate.exists():
             driver_path = candidate
-        else:
-            driver_path = None
     except Exception:
-        driver_path = None
+        pass
 
-    # 2. Fallback: look in the PyInstaller extraction temp dir (sys._MEIPASS).
+    # 2. When running inside a PyInstaller bundle the PYZ archive means
+    #    __file__ doesn't point to a real directory, so compute_driver_executable
+    #    returns a path that doesn't exist.  Search _MEIPASS broadly instead.
     if driver_path is None and hasattr(sys, "_MEIPASS"):
-        base = pathlib.Path(sys._MEIPASS) / "playwright" / "driver"  # type: ignore[attr-defined]
+        meipass = pathlib.Path(sys._MEIPASS)  # type: ignore[attr-defined]
+        # Try the expected location first (fast path)
         for name in ("playwright.exe", "playwright.cmd", "playwright"):
-            candidate = base / name
+            candidate = meipass / "playwright" / "driver" / name
             if candidate.exists():
                 driver_path = candidate
                 break
+        # If not found there, do a full recursive glob across _MEIPASS
+        if driver_path is None:
+            log.info("[playwright] Fast path miss — scanning %s for playwright driver", meipass)
+            for pattern in ("playwright.exe", "playwright.cmd"):
+                matches = glob.glob(str(meipass / "**" / pattern), recursive=True)
+                if matches:
+                    # Prefer the one closest to a 'driver' directory
+                    matches.sort(key=lambda p: ("driver" not in p.lower(), len(p)))
+                    driver_path = pathlib.Path(matches[0])
+                    log.info("[playwright] Found driver via glob: %s", driver_path)
+                    break
 
     if driver_path is None:
+        meipass_str = str(getattr(sys, "_MEIPASS", "(no _MEIPASS)"))
         raise RuntimeError(
-            "Playwright driver not found. "
-            f"Searched standard path and {getattr(sys, '_MEIPASS', '(no _MEIPASS)')}."
+            f"Playwright driver executable not found.\n"
+            f"Searched: standard path via compute_driver_executable(), "
+            f"and glob scan of {meipass_str}.\n"
+            f"playwright package location: "
+            f"{pathlib.Path(__import__('playwright').__file__).parent}"
         )
 
-    # .cmd batch files must be run via cmd.exe /c on Windows.
+    # .cmd batch files must be invoked via cmd.exe /c on Windows.
     if sys.platform == "win32" and driver_path.suffix.lower() == ".cmd":
         cmd = ["cmd", "/c", str(driver_path)]
     else:
         cmd = [str(driver_path)]
 
+    log.info("[playwright] Using driver: %s", driver_path)
     return cmd, env
 
 
