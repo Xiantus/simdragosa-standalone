@@ -29,3 +29,4 @@ publish:
   provider: github
   owner: Xiantus
   repo: simdragosa-standalone
+  releaseType: release
