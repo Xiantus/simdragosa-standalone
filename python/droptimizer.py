@@ -15,6 +15,7 @@ import logging
 import re
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 
@@ -181,7 +182,7 @@ def get_site_versions(session: requests.Session) -> tuple[str, str]:
 
 
 def fetch_character(session: requests.Session, region: str, realm: str, name: str) -> dict:
-    url = WOWAPI_CHAR_TMPL.format(region=region, realm=realm, name=name)
+    url = WOWAPI_CHAR_TMPL.format(region=region, realm=realm, name=quote(name, safe=''))
     log.info("Fetching character data for %s/%s/%s ...", region, realm, name)
     resp = session.get(url, timeout=15)
     resp.raise_for_status()
