@@ -106,6 +106,7 @@ export function spawnWorker(
 
   // Parse stdout line by line
   let buffer = ''
+  let receivedDoneOrError = false
   proc.stdout!.on('data', (chunk: Buffer) => {
     buffer += chunk.toString()
     const lines = buffer.split('\n')
@@ -115,6 +116,7 @@ export function spawnWorker(
       if (!trimmed) continue
       try {
         const event = JSON.parse(trimmed)
+        if (event.type === 'done' || event.type === 'error') receivedDoneOrError = true
         handleWorkerEvent(spec, event, win, db, onDone)
       } catch (_) {
         console.warn(`[worker ${spec.job_id}] non-JSON stdout:`, trimmed)
@@ -122,18 +124,24 @@ export function spawnWorker(
     }
   })
 
+  let stderrLog = ''
   proc.stderr!.on('data', (chunk: Buffer) => {
-    // Worker logs to stderr — useful for debugging
-    process.stdout.write(`[worker ${spec.job_id}] ${chunk.toString()}`)
+    const text = chunk.toString()
+    process.stdout.write(`[worker ${spec.job_id}] ${text}`)
+    stderrLog += text
   })
 
   proc.on('close', (code) => {
     activeWorkers.delete(spec.job_id)
     // If exited non-zero and we never received a done/error event, emit error
-    if (code !== 0 && win && !win.isDestroyed()) {
+    if (code !== 0 && !receivedDoneOrError && win && !win.isDestroyed()) {
+      const detail = stderrLog.trim()
+      const message = detail
+        ? `Worker process exited with code ${code}\n\n${detail}`
+        : `Worker process exited with code ${code}`
       const err: JobError = {
         job_id: spec.job_id,
-        message: `Worker process exited with code ${code}`,
+        message,
       }
       win.webContents.send('job:error', err)
     }

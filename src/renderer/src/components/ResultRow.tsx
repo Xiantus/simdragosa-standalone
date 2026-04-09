@@ -157,9 +157,23 @@ export default function ResultRow({ job }: Props): JSX.Element {
           </a>
         )}
 
-        <span style={{ fontSize: 11, fontWeight: 700, color: statusColor, flexShrink: 0 }}>
-          {job.status.toUpperCase()}
-        </span>
+        {job.status === 'error' && job.error_message ? (
+          <span
+            role="button"
+            onClick={() => window.alert(job.error_message)}
+            style={{
+              fontSize: 11, fontWeight: 700, color: statusColor, flexShrink: 0,
+              cursor: 'pointer', textDecoration: 'underline dotted',
+            }}
+            title="Click to see full error"
+          >
+            ERROR
+          </span>
+        ) : (
+          <span style={{ fontSize: 11, fontWeight: 700, color: statusColor, flexShrink: 0 }}>
+            {job.status.toUpperCase()}
+          </span>
+        )}
       </div>
 
       {/* DPS gain bars — collapsed by default, expand on click */}
