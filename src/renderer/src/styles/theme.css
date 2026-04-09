@@ -1,0 +1,40 @@
+/* Simdragosa dark theme — extracted from v1 index.html */
+:root {
+  --bg:     #13131f;
+  --surf:   #1c1c2e;
+  --surf2:  #252538;
+  --border: #2e2e48;
+  --text:   #dde0f0;
+  --sub:    #7878a0;
+  --accent: #7c6af7;
+  --acc-h:  #9a8cff;
+  --green:  #4ade80;
+  --red:    #f87171;
+  --yellow: #fbbf24;
+  --blue:   #60a5fa;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+  user-select: none;
+  height: 100vh;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surf); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--sub); }
+
+[data-overlay="true"] {
+  background: rgba(10, 10, 20, 0.82) !important;
+}

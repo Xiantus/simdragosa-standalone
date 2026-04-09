@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -30,7 +30,7 @@ jobs:
       - name: Run Python tests
         run: python -m pytest tests/ -v --tb=short
 
-  electron-tests:
+  node-tests:
     runs-on: windows-latest
 
     steps:
@@ -40,11 +40,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
 
       - name: Install Node dependencies
-        working-directory: electron
         run: npm ci
 
-      - name: Run Electron tests
-        working-directory: electron
+      - name: Run main-process tests (Jest)
         run: npm test
+
+      - name: Run renderer tests (Vitest)
+        run: npx vitest run
+
+      - name: Build (smoke test)
+        run: npm run build
