@@ -61,6 +61,12 @@ const api: ElectronAPI = {
     ipcRenderer.on('playwright:progress', handler)
     return () => ipcRenderer.off('playwright:progress', handler)
   },
+  onUpdateReady: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('update:ready', handler)
+    return () => ipcRenderer.off('update:ready', handler)
+  },
+  restartAndUpdate: () => ipcRenderer.send('update:restart'),
 }
 
 contextBridge.exposeInMainWorld('api', api)

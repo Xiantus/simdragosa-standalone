@@ -57,7 +57,7 @@ export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_
       case 'idle':      return 'Check for Updates'
       case 'checking':  return 'Checking\u2026'
       case 'up-to-date': return `\u2713 Up to date (v${updateState.version})`
-      case 'available': return `\u2605 v${updateState.version} available — see dialog`
+      case 'available': return `\u2605 v${updateState.version} available — downloading\u2026`
       case 'error':     return `\u26a0 ${updateState.message}`
     }
   })()

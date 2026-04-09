@@ -35,6 +35,8 @@ const unsubscribe = vi.fn(() => vi.fn())
   onJobDone: unsubscribe,
   onJobError: unsubscribe,
   onPlaywrightProgress: unsubscribe,
+  onUpdateReady: unsubscribe,
+  restartAndUpdate: noopSync,
 
   // Overlay mode
   getOverlayMode: vi.fn().mockResolvedValue(false),

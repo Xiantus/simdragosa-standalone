@@ -132,6 +132,8 @@ export interface ElectronAPI {
   onJobDone: (callback: (done: JobDone) => void) => () => void
   onJobError: (callback: (error: JobError) => void) => () => void
   onPlaywrightProgress: (callback: (progress: PlaywrightProgress) => void) => () => void
+  onUpdateReady: (callback: () => void) => () => void
+  restartAndUpdate: () => void
 }
 
 declare global {

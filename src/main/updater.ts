@@ -1,6 +1,6 @@
 // src/main/updater.ts
 import { autoUpdater } from 'electron-updater'
-import { app, dialog } from 'electron'
+import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 
 export type UpdateCheckResult =
@@ -8,52 +8,39 @@ export type UpdateCheckResult =
   | { status: 'available'; version: string }
   | { status: 'error'; message: string }
 
+const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000 // 4 hours
+
 export function setupAutoUpdater(win: BrowserWindow): void {
   if (!app.isPackaged) {
     console.log('[updater] dev mode — skipping update check')
     return
   }
 
-  autoUpdater.autoDownload = false
+  autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
 
   autoUpdater.on('update-available', (info) => {
-    dialog
-      .showMessageBox(win, {
-        type: 'info',
-        title: 'Update Available',
-        message: `Simdragosa ${info.version} is available. Download now?`,
-        buttons: ['Download', 'Later'],
-        defaultId: 0,
-      })
-      .then(({ response }) => {
-        if (response === 0) autoUpdater.downloadUpdate()
-      })
+    console.log(`[updater] update available: ${info.version} — downloading in background`)
   })
 
   autoUpdater.on('update-downloaded', () => {
-    dialog
-      .showMessageBox(win, {
-        type: 'info',
-        title: 'Update Ready',
-        message: 'Update downloaded. Restart now to apply?',
-        buttons: ['Restart', 'Later'],
-        defaultId: 0,
-      })
-      .then(({ response }) => {
-        if (response === 0) autoUpdater.quitAndInstall()
-      })
+    if (!win.isDestroyed()) win.webContents.send('update:ready')
   })
 
   autoUpdater.on('error', (err) => {
     console.error('[updater]', err.message)
   })
 
-  // Delay first check so it doesn't block startup
-  setTimeout(() => {
+  const check = () => {
     autoUpdater.checkForUpdates().catch((err) => {
       console.warn('[updater] checkForUpdates failed:', err.message)
     })
+  }
+
+  // Delay first check so it doesn't block startup, then repeat every 4 hours
+  setTimeout(() => {
+    check()
+    setInterval(check, CHECK_INTERVAL_MS)
   }, 8000)
 }
 

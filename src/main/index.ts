@@ -6,6 +6,7 @@ import { buildLua, writeLuaFile, resolveAddonDataPath } from './lua-export'
 import { spawnWorker, cancelAllWorkers, findPython, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
 import { setupAutoUpdater, checkForUpdatesNow } from './updater'
+import { autoUpdater } from 'electron-updater'
 import { createTriggerWindow, showTriggerWindow, hideTriggerWindow, destroyTriggerWindow, registerTriggerIpc } from './trigger-window'
 import type { Character, Settings, SimSelection } from '../shared/ipc'
 
@@ -268,6 +269,7 @@ function registerIpcHandlers(): void {
   })
   ipcMain.handle('cancelJobs', () => cancelAllWorkers())
   ipcMain.handle('checkForUpdates', () => checkForUpdatesNow())
+  ipcMain.on('update:restart', () => { autoUpdater.quitAndInstall() })
 
   // Overlay mode
   ipcMain.handle('getOverlayMode', () => store.get('overlayMode'))
