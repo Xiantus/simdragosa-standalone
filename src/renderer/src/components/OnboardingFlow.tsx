@@ -81,6 +81,9 @@ export default function OnboardingFlow({ isConfigured, onComplete }: Props): JSX
               color: 'var(--text)', padding: '8px 12px', fontSize: 13, outline: 'none',
             }}
           />
+          <p style={{ fontSize: 11, color: 'var(--sub)', margin: 0, lineHeight: 1.4 }}>
+            Only needed if you use the <strong style={{ color: 'var(--text)' }}>Simdragosa WoW addon</strong> — this is where simulation results get written so the addon can show DPS gains in item tooltips.
+          </p>
         </div>
 
         <button

@@ -213,6 +213,40 @@ export default function CharacterModal({ open, character, onClose, onSave }: Pro
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label htmlFor="field-simc_string" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>
+              SimC String
+            </label>
+            {simcFilled.length > 0 && (
+              <span style={{
+                fontSize: 10, color: 'var(--green, #3ecf8e)', background: 'rgba(62,207,142,0.12)',
+                borderRadius: 4, padding: '1px 6px', fontWeight: 600,
+              }}>
+                ✓ auto-filled: {simcFilled.join(', ')}
+              </span>
+            )}
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--sub)', margin: 0, lineHeight: 1.4 }}>
+            Paste your SimC export first — it will auto-fill name, realm, region, and spec below.
+          </p>
+          <textarea
+            id="field-simc_string"
+            value={form.simc_string}
+            onChange={(e) => handleSimcChange(e.target.value)}
+            placeholder="Paste SimC export here…"
+            rows={8}
+            style={{
+              ...inputStyle,
+              resize: 'vertical',
+              fontFamily: 'monospace',
+              fontSize: 11,
+              userSelect: 'text',   // override body's user-select:none so text is selectable
+              WebkitUserSelect: 'text',
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label htmlFor="field-name" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>Name</label>
           <input
             id="field-name"
@@ -256,37 +290,6 @@ export default function CharacterModal({ open, character, onClose, onSave }: Pro
           >
             {SPECS.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}
           </select>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label htmlFor="field-simc_string" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>
-              SimC String
-            </label>
-            {simcFilled.length > 0 && (
-              <span style={{
-                fontSize: 10, color: 'var(--green, #3ecf8e)', background: 'rgba(62,207,142,0.12)',
-                borderRadius: 4, padding: '1px 6px', fontWeight: 600,
-              }}>
-                ✓ auto-filled: {simcFilled.join(', ')}
-              </span>
-            )}
-          </div>
-          <textarea
-            id="field-simc_string"
-            value={form.simc_string}
-            onChange={(e) => handleSimcChange(e.target.value)}
-            placeholder="Paste your SimC export here — name, realm, region and spec will be filled automatically"
-            rows={8}
-            style={{
-              ...inputStyle,
-              resize: 'vertical',
-              fontFamily: 'monospace',
-              fontSize: 11,
-              userSelect: 'text',   // override body's user-select:none so text is selectable
-              WebkitUserSelect: 'text',
-            }}
-          />
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
