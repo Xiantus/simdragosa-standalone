@@ -90,6 +90,15 @@ export interface JobError {
   message: string
 }
 
+export interface JobQueued {
+  job_id: string
+  char_id: string
+  char_name: string
+  spec: string
+  difficulty: string
+  build_label: string
+}
+
 export interface PlaywrightProgress {
   percent: number
   message: string
@@ -111,7 +120,7 @@ export interface ElectronAPI {
     | { status: 'error'; message: string }
   >
   writeLua: () => Promise<{ ok: boolean; path?: string; error?: string }>
-  startSim: (selections: SimSelection) => Promise<void>
+  startSim: (selections: SimSelection) => Promise<JobQueued[]>
   cancelJobs: () => Promise<void>
   exportLua: () => Promise<string>
   installPlaywright: () => Promise<void>

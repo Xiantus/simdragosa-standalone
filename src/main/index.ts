@@ -217,6 +217,8 @@ function registerIpcHandlers(): void {
     const characters = getCharacters(db)
     const charMap = new Map(characters.map((c) => [c.id, c]))
 
+    const queued: Array<{ job_id: string; char_id: string; char_name: string; spec: string; difficulty: string; build_label: string }> = []
+
     for (const charId of selection.character_ids) {
       const char = charMap.get(charId)
       if (!char) continue
@@ -243,6 +245,7 @@ function registerIpcHandlers(): void {
           raidbots_api_key: null,
           timeout_minutes: 30,
         }
+        queued.push({ job_id, char_id: charId, char_name: char.name, spec: char.spec, difficulty, build_label: 'Default' })
         if (mainWindow) spawnWorker(spec, mainWindow, db, (dpsGains, charName, specName, difficulty) => {
           const rows = dpsGains.map((g: any) => ({
             item_id: g.item_id,
@@ -266,6 +269,8 @@ function registerIpcHandlers(): void {
         })
       }
     }
+
+    return queued
   })
   ipcMain.handle('cancelJobs', () => cancelAllWorkers())
   ipcMain.handle('checkForUpdates', () => checkForUpdatesNow())

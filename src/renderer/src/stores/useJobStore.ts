@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Job, JobUpdate, JobDone, JobError, SimSelection, DpsGain } from '../../../shared/ipc'
+import type { Job, JobUpdate, JobDone, JobError, SimSelection, DpsGain, JobQueued } from '../../../shared/ipc'
 
 export interface ActiveJob {
   job_id: string
@@ -38,7 +38,26 @@ export const useJobStore = create<JobState>((set, get) => ({
   running: false,
 
   startSim: async (selection) => {
-    await window.api.startSim(selection)
+    const queued: JobQueued[] = await window.api.startSim(selection)
+    if (queued && queued.length > 0) {
+      set((state) => ({
+        jobs: [
+          ...state.jobs,
+          ...queued.map((q) => ({
+            job_id: q.job_id,
+            char_id: q.char_id,
+            char_name: q.char_name,
+            spec: q.spec,
+            difficulty: q.difficulty,
+            build_label: q.build_label,
+            status: 'queued' as Job['status'],
+            log_lines: [],
+            started_at: Date.now(),
+          })),
+        ],
+        running: true,
+      }))
+    }
   },
 
   cancelJobs: async () => {
