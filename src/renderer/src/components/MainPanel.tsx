@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useJobStore } from '../stores/useJobStore'
 import { useCharacterStore } from '../stores/useCharacterStore'
 import ActiveJobsStrip from './ActiveJobsStrip'
-import ResultRow from './ResultRow'
+import ResultsPanel from './ResultsPanel'
 import CharacterSelector from './CharacterSelector'
 import DifficultyPicker from './DifficultyPicker'
 import RunButton from './RunButton'
@@ -119,14 +119,14 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
       {/* Results */}
       <section
         data-testid="results-panel"
-        style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 16px' }}
+        style={{ flex: 1, overflow: 'hidden', padding: '12px 20px 16px', display: 'flex', flexDirection: 'column' }}
       >
         {completed.length === 0 ? (
           <div style={{ color: 'var(--sub)', fontSize: 13 }}>
             Results will appear here after sims complete.
           </div>
         ) : (
-          completed.map((job) => <ResultRow key={job.job_id} job={job} />)
+          <ResultsPanel jobs={completed} />
         )}
       </section>
     </main>
