@@ -27,17 +27,6 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-# Force UTF-8 on stdin/stdout so non-ASCII character names (e.g. "Jüther")
-# are not mangled on Windows where the default console encoding is cp1252.
-if sys.stdin and not isinstance(sys.stdin, io.TextIOWrapper):
-    pass  # already a custom stream (tests), leave it
-elif sys.stdin:
-    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
-if sys.stdout and not isinstance(sys.stdout, io.TextIOWrapper):
-    pass
-elif sys.stdout:
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
-
 # Configure logging to stderr only (stdout is reserved for JSON protocol)
 logging.basicConfig(
     level=logging.INFO,
@@ -336,6 +325,13 @@ def run_qe_job(spec: dict, emit_fn: Callable | None = None) -> int:
 # ---------------------------------------------------------------------------
 
 def main() -> int:
+    # Force UTF-8 on stdin/stdout so non-ASCII character names (e.g. "Jüther")
+    # are not mangled on Windows where the default console encoding is cp1252.
+    if sys.stdin and isinstance(sys.stdin, io.TextIOWrapper):
+        sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+    if sys.stdout and isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
+
     try:
         raw = sys.stdin.readline()
         if not raw or not raw.strip():

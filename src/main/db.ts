@@ -121,7 +121,23 @@ export function upsertTooltipRows(db: Database.Database, rows: TooltipRow[]): vo
 }
 
 export function getAllTooltipData(db: Database.Database): TooltipRow[] {
-  return db.prepare('SELECT * FROM tooltip_data').all() as TooltipRow[]
+  return db.prepare(`
+    SELECT t.item_id, t.char_name, t.realm, t.spec, t.difficulty,
+           t.dps_gain, t.ilvl, COALESCE(t.item_name, n.name) AS item_name, t.sim_date
+    FROM tooltip_data t
+    LEFT JOIN item_names n ON t.item_id = n.item_id
+  `).all() as TooltipRow[]
+}
+
+export function deleteTooltipRowsByCharSpecDiff(
+  db: Database.Database,
+  charName: string,
+  spec: string,
+  difficulty: string
+): void {
+  db.prepare(
+    'DELETE FROM tooltip_data WHERE char_name = ? AND spec = ? AND difficulty = ?'
+  ).run(charName, spec, difficulty)
 }
 
 export function upsertJobResult(

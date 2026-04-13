@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, net } from 'electron'
 import { join } from 'path'
 import Store from 'electron-store'
-import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, getJobResults, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, type ItemData } from './db'
+import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, deleteTooltipRowsByCharSpecDiff, getJobResults, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, type ItemData } from './db'
 import { buildLua, writeLuaFile, resolveAddonDataPath } from './lua-export'
 import { spawnWorker, cancelAllWorkers, findPython, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
@@ -286,6 +286,7 @@ function registerIpcHandlers(): void {
             sim_date: new Date().toISOString().slice(0, 10),
           }))
           if (rows.length > 0) {
+            deleteTooltipRowsByCharSpecDiff(db, charName, specName, difficulty)
             upsertTooltipRows(db, rows)
             const wow_path = store.get('wow_path')
             if (wow_path) {
