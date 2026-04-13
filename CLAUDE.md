@@ -25,3 +25,22 @@
    git merge develop
    git push
    ```
+
+---
+
+# Project Context (Wiki)
+
+At session start, read these wiki pages for full project context:
+
+- `C:\Users\Xiant\Documents\Projects\vault\Big Vault\wiki\sources\project-simdragosa-standalone.md` — architecture, v1 vs v2 comparison, key constraints
+- `C:\Users\Xiant\Documents\Projects\vault\Big Vault\wiki\overviews\simdragosa-ecosystem.md` — how this project fits with auto_sim, addon, sds-lockfile
+
+## Key facts (summary)
+
+- v2 desktop app: Electron + React + TypeScript frontend; Python backend via subprocess with IPC bridge
+- User workflow: add characters → select tracks → GO → view ranked DPS bars → `/reload` in WoW
+- Writes `SimdragosaData.lua` to WoW addon folder; consumed by `simdragosa-addon`
+- Distributed as Windows installer via GitHub Releases; auto-updater via electron-updater
+- Python backend lives in `python/` subdirectory; **requires Python 3.10+ from python.org** (not Microsoft Store)
+- Supersedes `sds-lockfile` (v1); shares core sim logic with `auto_sim`
+- **Raidbots has no public API** — uses internal endpoints; session managed by `raidbots_session.py`

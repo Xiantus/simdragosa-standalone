@@ -22,9 +22,9 @@ describe('buildLua', () => {
     expect(lua).toContain('SimdragosaDB')
   })
 
-  it('includes the character name as a Lua table key', () => {
+  it('includes the character name and realm as a Lua table key', () => {
     const lua = buildLua([row()])
-    expect(lua).toContain('["Xiantus"]')
+    expect(lua).toContain('["Xiantus-illidan"]')
   })
 
   it('includes the item_id as a Lua integer key', () => {
