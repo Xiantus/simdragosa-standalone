@@ -1,6 +1,6 @@
 {
   "name": "simdragosa-standalone",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Standalone Windows desktop app for Simdragosa — v2 architecture",
   "main": "out/main/index.js",
   "scripts": {

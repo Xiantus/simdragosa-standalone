@@ -10,6 +10,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   raidsid: '',
   wow_path: '',
   is_configured: false,
+  version: '',
 
   fetchSettings: async () => {
     try {

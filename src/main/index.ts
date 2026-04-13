@@ -164,6 +164,7 @@ function registerIpcHandlers(): void {
     raidsid: store.get('raidsid'),
     wow_path: store.get('wow_path'),
     is_configured: Boolean(store.get('raidsid')),
+    version: app.getVersion(),
   }))
   ipcMain.handle('saveSettings', (_event, partial: Partial<Settings>) => {
     if (partial.raidsid !== undefined) store.set('raidsid', partial.raidsid)

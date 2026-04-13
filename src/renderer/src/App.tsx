@@ -11,7 +11,7 @@ import type { SimcExportDetected } from '../../../shared/ipc'
 import './styles/theme.css'
 
 export default function App(): JSX.Element {
-  const { is_configured, raidsid, wow_path, fetchSettings } = useSettingsStore()
+  const { is_configured, raidsid, wow_path, version, fetchSettings } = useSettingsStore()
   const loadHistoricalJobs = useJobStore((s) => s.loadHistoricalJobs)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [overlayMode, setOverlayMode] = useState(false)
@@ -182,6 +182,7 @@ export default function App(): JSX.Element {
         open={settingsOpen}
         raidsid={raidsid}
         wow_path={wow_path}
+        version={version}
         onClose={() => { setSettingsOpen(false); fetchSettings() }}
       />
     </div>

@@ -1,6 +1,6 @@
 import React from 'react'
 import type { Character } from '../../../shared/ipc'
-import { iconUrlFromSpecId } from '../lib/specIcons'
+import { iconUrlFromSpecId, iconUrlFromSpecName } from '../lib/specIcons'
 
 interface Props {
   character: Character
@@ -34,9 +34,9 @@ export default function CharacterRow({ character, onEdit, onDelete }: Props): JS
           {character.name}
         </div>
         <div style={{ fontSize: 11, color: 'var(--sub)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
-          {iconUrlFromSpecId(character.spec_id) && (
+          {(iconUrlFromSpecId(character.spec_id) || iconUrlFromSpecName(character.spec)) && (
             <img
-              src={iconUrlFromSpecId(character.spec_id)!}
+              src={(iconUrlFromSpecId(character.spec_id) || iconUrlFromSpecName(character.spec))!}
               alt=""
               width={14}
               height={14}
