@@ -6,13 +6,29 @@ import OnboardingFlow from './components/OnboardingFlow'
 import SettingsPanel from './components/SettingsPanel'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useJobStore } from './stores/useJobStore'
+import { useCharacterStore } from './stores/useCharacterStore'
 import { specIdFromName } from './lib/specIcons'
-import type { SimcExportDetected } from '../../../shared/ipc'
+import type { Character, SimcExportDetected } from '../../../shared/ipc'
 import './styles/theme.css'
+
+/** Find the best existing character match for a SimC export entry. */
+function findMatchingChar(entry: SimcExportDetected, characters: Character[]): Character | null {
+  const [namePart, ...realmParts] = entry.charKey.split('-')
+  const name = namePart.toLowerCase()
+  const realm = realmParts.join('-').toLowerCase()
+  const matches = characters.filter(
+    (c) => c.name.toLowerCase() === name && c.realm.toLowerCase() === realm
+  )
+  if (matches.length === 0) return null
+  if (matches.length === 1) return matches[0]
+  // Multiple chars with same name+realm (different specs) — prefer spec match
+  return matches.find((c) => c.spec.toLowerCase() === entry.spec.toLowerCase()) ?? matches[0]
+}
 
 export default function App(): JSX.Element {
   const { is_configured, raidsid, wow_path, version, fetchSettings } = useSettingsStore()
   const loadHistoricalJobs = useJobStore((s) => s.loadHistoricalJobs)
+  const characters = useCharacterStore((s) => s.characters)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [overlayMode, setOverlayMode] = useState(false)
   const [updateReady, setUpdateReady] = useState(false)
@@ -34,16 +50,24 @@ export default function App(): JSX.Element {
     return () => { unsubOverlay(); unsubUpdate(); unsubSimc() }
   }, [])
 
-  /** Create (or update) a character from a SimC export entry. */
-  async function upsertCharFromSimc(entry: SimcExportDetected): Promise<string> {
+  /** Update an existing character's simc string, or create a new one from the export. */
+  async function upsertCharFromSimc(entry: SimcExportDetected, existing: Character | null): Promise<string> {
+    const specId = specIdFromName(entry.spec)
+    if (existing) {
+      await window.api.upsertCharacter({
+        ...existing,
+        simc_string: entry.simc,
+        spec: entry.spec,
+        spec_id: specId,
+        loot_spec_id: specId,
+      })
+      return existing.id
+    }
     const [namePart, ...realmParts] = entry.charKey.split('-')
     const realm = realmParts.join('-')
-    // Extract region from simc string if present
     const regionMatch = entry.simc.match(/^region=(\w+)/m)
     const region = regionMatch?.[1] ?? 'eu'
-    const specId = specIdFromName(entry.spec)
     const charId = `${namePart.toLowerCase()}-${entry.spec.toLowerCase()}`
-
     await window.api.upsertCharacter({
       id: charId,
       name: namePart,
@@ -63,16 +87,15 @@ export default function App(): JSX.Element {
     setSimcExports((prev) => prev.filter((e) => e.charKey !== entry.charKey))
   }
 
-  async function handleSimcRun(entry: SimcExportDetected) {
+  async function handleSimcRun(entry: SimcExportDetected, existing: Character | null) {
     dismissExport(entry)
-    const charId = await upsertCharFromSimc(entry)
-    // Use the default difficulties from the current selection — fall back to heroic
+    const charId = await upsertCharFromSimc(entry, existing)
     await window.api.startSim({ character_ids: [charId], difficulties: ['raid-heroic'] })
   }
 
-  async function handleSimcAdd(entry: SimcExportDetected) {
+  async function handleSimcAdd(entry: SimcExportDetected, existing: Character | null) {
     dismissExport(entry)
-    await upsertCharFromSimc(entry)
+    await upsertCharFromSimc(entry, existing)
   }
 
   return (
@@ -121,6 +144,7 @@ export default function App(): JSX.Element {
       {simcExports.map((entry, idx) => {
         const specLabel = entry.spec.charAt(0).toUpperCase() + entry.spec.slice(1)
         const [charName] = entry.charKey.split('-')
+        const matched = findMatchingChar(entry, characters)
         const updateOffset = updateReady ? 36 : 0
         const bottomOffset = updateOffset + idx * 36
         return (
@@ -134,29 +158,36 @@ export default function App(): JSX.Element {
             <span style={{ color: 'var(--accent)', fontWeight: 700, flexShrink: 0 }}>
               SimC Export
             </span>
-            <span style={{ color: 'var(--text)', flex: 1 }}>
-              {charName} <span style={{ color: 'var(--sub)' }}>({specLabel})</span>
-              {' '}detected from WoW. Start a sim?
-            </span>
+            {matched ? (
+              <span style={{ color: 'var(--text)', flex: 1 }}>
+                {charName} <span style={{ color: 'var(--sub)' }}>({specLabel})</span>
+                {' '}— simc updated. Run a sim?
+              </span>
+            ) : (
+              <span style={{ color: 'var(--text)', flex: 1 }}>
+                {charName} <span style={{ color: 'var(--sub)' }}>({specLabel})</span>
+                {' '}— not in your list yet. Add?
+              </span>
+            )}
             <button
-              onClick={() => handleSimcRun(entry)}
+              onClick={() => handleSimcRun(entry, matched)}
               style={{
                 background: 'var(--accent)', color: '#fff', border: 'none',
                 borderRadius: 4, padding: '3px 10px', fontWeight: 700,
                 cursor: 'pointer', fontSize: 11, flexShrink: 0,
               }}
             >
-              Run
+              {matched ? 'Run' : 'Add & Run'}
             </button>
             <button
-              onClick={() => handleSimcAdd(entry)}
+              onClick={() => handleSimcAdd(entry, matched)}
               style={{
                 background: 'var(--surf)', color: 'var(--text)',
                 border: '1px solid var(--border)', borderRadius: 4,
                 padding: '3px 10px', cursor: 'pointer', fontSize: 11, flexShrink: 0,
               }}
             >
-              Add only
+              {matched ? 'Update only' : 'Add only'}
             </button>
             <button
               onClick={() => dismissExport(entry)}
