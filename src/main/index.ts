@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, net } from 'electron'
 import { join } from 'path'
 import Store from 'electron-store'
-import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, getJobResults, getCachedItemNames, upsertItemNames, migrateItemNames, type ItemData } from './db'
+import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, getJobResults, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, type ItemData } from './db'
 import { buildLua, writeLuaFile, resolveAddonDataPath } from './lua-export'
 import { spawnWorker, cancelAllWorkers, findPython, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
@@ -231,6 +231,10 @@ function registerIpcHandlers(): void {
     return rows
       .map((r) => r.latest_job ?? r.last_success_job)
       .filter(Boolean)
+  })
+
+  ipcMain.handle('deleteResult', (_event, char_id: string, difficulty: string, build_label: string) => {
+    deleteJobResult(db, `${char_id}|${difficulty}|${build_label}`)
   })
 
   // Sim launch (#21)
