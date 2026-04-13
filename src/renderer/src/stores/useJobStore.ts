@@ -23,6 +23,7 @@ interface JobState {
   running: boolean
   startSim: (selection: SimSelection) => Promise<void>
   cancelJobs: () => Promise<void>
+  deleteJob: (job_id: string, char_id: string, difficulty: string, build_label: string) => Promise<void>
   handleJobUpdate: (update: JobUpdate) => void
   handleJobDone: (done: JobDone) => void
   handleJobError: (error: JobError) => void
@@ -58,6 +59,11 @@ export const useJobStore = create<JobState>((set, get) => ({
         running: true,
       }))
     }
+  },
+
+  deleteJob: async (job_id, char_id, difficulty, build_label) => {
+    await window.api.deleteResult(char_id, difficulty, build_label)
+    set((state) => ({ jobs: state.jobs.filter((j) => j.job_id !== job_id) }))
   },
 
   cancelJobs: async () => {

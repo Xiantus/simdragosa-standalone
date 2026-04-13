@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { iconUrlFromSpecName } from '../lib/specIcons'
-import type { ActiveJob } from '../stores/useJobStore'
+import { useJobStore, type ActiveJob } from '../stores/useJobStore'
 import type { DpsGain } from '../../../shared/ipc'
 
 const DIFF_LABELS: Record<string, string> = {
@@ -151,13 +151,17 @@ function DiffCard({
   job,
   isExpanded,
   onToggle,
+  onDelete,
 }: {
   job: ActiveJob
   isExpanded: boolean
   onToggle: () => void
+  onDelete: () => void
 }): JSX.Element {
   const diffLabel = DIFF_LABELS[job.difficulty] ?? job.difficulty
   const hasGains = job.status === 'done' && job.dps_gains && job.dps_gains.length > 0
+  const [hovered, setHovered] = useState(false)
+  const isActive = ['queued', 'fetching', 'submitting', 'running'].includes(job.status)
 
   const statusColor =
     job.status === 'done' ? 'var(--green)' :
@@ -174,7 +178,10 @@ function DiffCard({
   return (
     <div
       onClick={() => hasGains && onToggle()}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
+        position: 'relative',
         background: 'var(--bg)',
         border: `1px solid ${isExpanded ? 'var(--accent)' : 'var(--border)'}`,
         borderRadius: 6,
@@ -186,11 +193,28 @@ function DiffCard({
         transition: 'border-color 0.15s',
       }}
     >
-      <div style={{
-        fontSize: 10, fontWeight: 700, color: 'var(--sub)',
-        textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4,
-      }}>
-        {diffLabel}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, color: 'var(--sub)',
+          textTransform: 'uppercase', letterSpacing: '0.06em', flex: 1,
+        }}>
+          {diffLabel}
+        </span>
+        {hovered && !isActive && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+            title="Delete this sim"
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--sub)', fontSize: 12, lineHeight: 1,
+              padding: '0 0 0 4px', flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--red)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--sub)' }}
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
@@ -234,7 +258,7 @@ function DiffCard({
 
 // ── Spec sub-group ────────────────────────────────────────────────────────────
 
-function SpecSection({ spec, jobs }: { spec: string; jobs: ActiveJob[] }): JSX.Element {
+function SpecSection({ spec, jobs, onDeleteJob }: { spec: string; jobs: ActiveJob[]; onDeleteJob: (job: ActiveJob) => void }): JSX.Element {
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
 
   const sorted = [...jobs].sort((a, b) => {
@@ -282,6 +306,7 @@ function SpecSection({ spec, jobs }: { spec: string; jobs: ActiveJob[] }): JSX.E
             job={job}
             isExpanded={expandedJobId === job.job_id}
             onToggle={() => toggle(job.job_id)}
+            onDelete={() => onDeleteJob(job)}
           />
         ))}
       </div>
@@ -307,12 +332,14 @@ interface CharacterSectionProps {
   onDragOver: (e: React.DragEvent) => void
   onDrop: (e: React.DragEvent) => void
   onDragEnd: () => void
+  onDeleteJob: (job: ActiveJob) => void
 }
 
 function CharacterSection({
   charName, specMap, specOrder,
   isDragOver, isDragging,
   onDragStart, onDragOver, onDrop, onDragEnd,
+  onDeleteJob,
 }: CharacterSectionProps): JSX.Element {
   const [collapsed, setCollapsed] = useState(false)
   const [headerHovered, setHeaderHovered] = useState(false)
@@ -380,7 +407,7 @@ function CharacterSection({
       {!collapsed && (
         <div style={{ padding: '10px 12px 4px' }}>
           {specOrder.map((spec) => (
-            <SpecSection key={spec} spec={spec} jobs={specMap.get(spec)!} />
+            <SpecSection key={spec} spec={spec} jobs={specMap.get(spec)!} onDeleteJob={onDeleteJob} />
           ))}
         </div>
       )}
@@ -397,6 +424,7 @@ interface Props {
 }
 
 export default function ResultsPanel({ jobs }: Props): JSX.Element {
+  const deleteJob = useJobStore((s) => s.deleteJob)
   const [diffFilter, setDiffFilter] = useState<Set<string>>(new Set())
 
   // Persist custom char order in localStorage
@@ -626,6 +654,7 @@ export default function ResultsPanel({ jobs }: Props): JSX.Element {
                 onDragOver={(e) => handleDragOver(charId, e)}
                 onDrop={(e) => handleDrop(charId, e)}
                 onDragEnd={handleDragEnd}
+                onDeleteJob={(job) => deleteJob(job.job_id, job.char_id, job.difficulty, job.build_label)}
               />
             )
           })

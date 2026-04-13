@@ -139,6 +139,10 @@ export function upsertJobResult(
   `).run(key, JSON.stringify(latestJob), lastSuccessJob ? JSON.stringify(lastSuccessJob) : null)
 }
 
+export function deleteJobResult(db: Database.Database, key: string): void {
+  db.prepare('DELETE FROM job_results WHERE key = ?').run(key)
+}
+
 export function getJobResults(db: Database.Database): JobResultRow[] {
   const rows = db.prepare('SELECT * FROM job_results').all() as any[]
   return rows.map((row) => ({

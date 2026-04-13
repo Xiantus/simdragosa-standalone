@@ -121,6 +121,7 @@ export interface ElectronAPI {
   getSettings: () => Promise<Settings>
   saveSettings: (partial: Partial<Settings>) => Promise<void>
   getJobResults: () => Promise<StoredResult[]>
+  deleteResult: (char_id: string, difficulty: string, build_label: string) => Promise<void>
   fetchItemNames: (itemIds: number[]) => Promise<Record<number, { name: string; icon?: string | null; source?: string | null }>>
   checkForUpdates: () => Promise<
     | { status: 'up-to-date'; currentVersion: string }
