@@ -20,7 +20,7 @@ Standalone Windows desktop app that automates WoW Droptimizer sims on Raidbots a
 
 1. Download `Simdragosa-Setup-x.x.x.exe` from the [Releases page](https://github.com/Xiantus/simdragosa-standalone/releases)
 2. Run the installer — if Windows SmartScreen appears, click **More info → Run anyway**
-3. Install the [Simdragosa WoW addon](https://github.com/Xiantus/simdragosa-addon) (available on CurseForge)
+3. Install the [Simdragosa WoW addon](https://github.com/Xiantus/simdragosa-addon) — shows DPS gains on item tooltips in-game (available on CurseForge)
 
 ### Requirements
 
@@ -75,6 +75,19 @@ Click the **+** button in the left sidebar to add a character.
 | Crafted stats | Optional — stat allocation for crafted gear (default `36/49`) |
 
 The SimC string contains your current gear, talents, and stats. Raidbots uses it as the baseline for the sim.
+
+---
+
+## Keeping SimC strings up to date
+
+After a patch or gear change your SimC string goes stale. The easiest way to refresh it:
+
+1. Install the [SimulationCraft addon](https://www.curseforge.com/wow/addons/simulationcraft) and the [Simdragosa WoW addon](https://github.com/Xiantus/simdragosa-addon)
+2. Log into the character in WoW and type `/sdr export`
+3. The Simdragosa addon captures the full profile (gear, talents, stats) and stores it in SavedVariables
+4. Within a few seconds, the desktop app detects the new export and asks you to update the character — no copy-pasting required
+
+You can also paste a SimC string manually: open the SimulationCraft addon with `/simc`, copy the text, and paste it into the **SimC String** field.
 
 ---
 
