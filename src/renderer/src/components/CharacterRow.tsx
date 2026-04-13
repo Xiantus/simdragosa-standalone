@@ -1,5 +1,6 @@
 import React from 'react'
 import type { Character } from '../../../shared/ipc'
+import { iconUrlFromSpecId } from '../lib/specIcons'
 
 interface Props {
   character: Character
@@ -32,7 +33,17 @@ export default function CharacterRow({ character, onEdit, onDelete }: Props): JS
         <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {character.name}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--sub)', marginTop: 1 }}>
+        <div style={{ fontSize: 11, color: 'var(--sub)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {iconUrlFromSpecId(character.spec_id) && (
+            <img
+              src={iconUrlFromSpecId(character.spec_id)!}
+              alt=""
+              width={14}
+              height={14}
+              style={{ borderRadius: 2, flexShrink: 0 }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+          )}
           <span>{character.spec}</span>
           {character.ilvl ? <span>{` · ${Math.round(character.ilvl * 10) / 10}`}</span> : null}
         </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { iconUrlFromSpecName } from '../lib/specIcons'
 import type { ActiveJob } from '../stores/useJobStore'
 import type { DpsGain } from '../../../shared/ipc'
 
@@ -252,10 +253,24 @@ function SpecSection({ spec, jobs }: { spec: string; jobs: ActiveJob[] }): JSX.E
     <div style={{ marginBottom: 12 }}>
       {/* Spec label */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-        <div style={{
-          width: 5, height: 5, borderRadius: '50%',
-          background: 'var(--accent)', flexShrink: 0,
-        }} />
+        {iconUrlFromSpecName(spec)
+          ? (
+            <img
+              src={iconUrlFromSpecName(spec)!}
+              alt=""
+              width={14}
+              height={14}
+              style={{ borderRadius: 2, flexShrink: 0 }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+          )
+          : (
+            <div style={{
+              width: 5, height: 5, borderRadius: '50%',
+              background: 'var(--accent)', flexShrink: 0,
+            }} />
+          )
+        }
         <span style={{
           fontSize: 10, fontWeight: 700, color: 'var(--sub)',
           textTransform: 'uppercase', letterSpacing: '0.08em',

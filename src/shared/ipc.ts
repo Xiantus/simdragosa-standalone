@@ -104,6 +104,13 @@ export interface PlaywrightProgress {
   message: string
 }
 
+export interface SimcExportDetected {
+  charKey: string   // "CharName-Realm"
+  spec: string      // e.g. "frost"
+  simc: string      // full SimC profile string
+  timestamp: number // Unix seconds from the addon
+}
+
 // The full API exposed on window.api via contextBridge
 export interface ElectronAPI {
   // Renderer → Main (invoke/handle)
@@ -143,6 +150,10 @@ export interface ElectronAPI {
   onPlaywrightProgress: (callback: (progress: PlaywrightProgress) => void) => () => void
   onUpdateReady: (callback: () => void) => () => void
   restartAndUpdate: () => void
+
+  // SimC export detection (addon → watcher → renderer)
+  onSimcExport: (callback: (entry: SimcExportDetected) => void) => () => void
+  dismissSimcExport: (charKey: string, timestamp: number) => void
 }
 
 declare global {
