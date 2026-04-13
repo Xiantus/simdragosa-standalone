@@ -127,3 +127,31 @@ export function iconUrlFromSpecName(specName: string): string | null {
   const slug = SPEC_NAME_MAP[specName.toLowerCase().replace(/\s+/g, '_')]
   return slug ? `${BASE}/${slug}.jpg` : null
 }
+
+// Reverse map: spec name (lowercase) → spec_id.
+// For ambiguous names (frost/holy/restoration/protection), returns the most
+// commonly played spec. Callers can override after creation if needed.
+const SPEC_NAME_TO_ID: Record<string, number> = {
+  blood: 250, unholy: 252,
+  havoc: 577, vengeance: 581,
+  balance: 102, feral: 103, guardian: 104, restoration: 264, // Shaman resto wins tie
+  devastation: 1467, preservation: 1468, augmentation: 1473,
+  beast_mastery: 253, marksmanship: 254, survival: 255,
+  arcane: 62, fire: 63,
+  brewmaster: 268, mistweaver: 270, windwalker: 269,
+  retribution: 70,
+  discipline: 256, shadow: 258,
+  assassination: 259, outlaw: 260, subtlety: 261,
+  elemental: 262, enhancement: 263,
+  affliction: 265, demonology: 266, destruction: 267,
+  arms: 71, fury: 72,
+  // Ambiguous — pick most popular spec
+  frost: 64,        // Frost Mage (vs Frost DK 251)
+  holy: 65,         // Holy Paladin (vs Holy Priest 257)
+  protection: 66,   // Prot Paladin (vs Prot Warrior 73)
+}
+
+/** Returns the WoW spec ID for a spec name string, or 0 if unknown. */
+export function specIdFromName(specName: string): number {
+  return SPEC_NAME_TO_ID[specName.toLowerCase().replace(/[\s-]+/g, '_')] ?? 0
+}

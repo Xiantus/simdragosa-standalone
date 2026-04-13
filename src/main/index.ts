@@ -8,6 +8,7 @@ import { createTray, destroyTray } from './tray'
 import { setupAutoUpdater, checkForUpdatesNow } from './updater'
 import { autoUpdater } from 'electron-updater'
 import { createTriggerWindow, showTriggerWindow, hideTriggerWindow, destroyTriggerWindow, registerTriggerIpc } from './trigger-window'
+import { startWatcher, stopWatcher } from './simc-watcher'
 import type { Character, Settings, SimSelection } from '../shared/ipc'
 
 interface StoreSchema {
@@ -17,6 +18,8 @@ interface StoreSchema {
   alwaysOnTop: boolean
   overlayMode: boolean
   triggerPosition: { x: number; y: number }
+  watchSimcExports: boolean
+  simcSeenTimestamps: Record<string, number>
 }
 
 const store = new Store<StoreSchema>({
@@ -27,6 +30,8 @@ const store = new Store<StoreSchema>({
     alwaysOnTop: false,
     overlayMode: false,
     triggerPosition: { x: 120, y: 120 },
+    watchSimcExports: true,
+    simcSeenTimestamps: {},
   },
 })
 
@@ -162,7 +167,24 @@ function registerIpcHandlers(): void {
   }))
   ipcMain.handle('saveSettings', (_event, partial: Partial<Settings>) => {
     if (partial.raidsid !== undefined) store.set('raidsid', partial.raidsid)
-    if (partial.wow_path !== undefined) store.set('wow_path', partial.wow_path)
+    if (partial.wow_path !== undefined) {
+      store.set('wow_path', partial.wow_path)
+      // Restart watcher with the new path
+      if (store.get('watchSimcExports') && mainWindow) {
+        startWatcher(
+          partial.wow_path,
+          mainWindow,
+          () => store.get('simcSeenTimestamps'),
+          (ts) => store.set('simcSeenTimestamps', ts),
+        )
+      }
+    }
+  })
+
+  // SimC export dismiss — record the timestamp so we don't re-prompt for it
+  ipcMain.on('simc:dismiss', (_event, charKey: string, timestamp: number) => {
+    const seen = store.get('simcSeenTimestamps')
+    store.set('simcSeenTimestamps', { ...seen, [charKey]: timestamp })
   })
 
   ipcMain.handle('fetchItemNames', async (_event, itemIds: number[]): Promise<Record<number, ItemData>> => {
@@ -445,11 +467,23 @@ app.whenReady().then(() => {
     mainWindow!.setSkipTaskbar(true)
     showTriggerWindow()
   }
+
+  // Start SimC export watcher if enabled and wow_path is configured
+  const wowPath = store.get('wow_path')
+  if (store.get('watchSimcExports') && wowPath && mainWindow) {
+    startWatcher(
+      wowPath,
+      mainWindow,
+      () => store.get('simcSeenTimestamps'),
+      (ts) => store.set('simcSeenTimestamps', ts),
+    )
+  }
 })
 
 app.on('before-quit', () => {
   ;(app as any)._quitting = true
   cancelAllWorkers()
+  stopWatcher()
   destroyTray()
   destroyTriggerWindow()
 })
