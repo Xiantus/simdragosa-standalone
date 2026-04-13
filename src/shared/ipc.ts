@@ -20,6 +20,7 @@ export interface Settings {
   raidsid: string
   wow_path: string
   is_configured: boolean
+  version: string
 }
 
 export interface SimSelection {

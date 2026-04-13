@@ -79,6 +79,7 @@ const SPEC_NAME_MAP: Record<string, string> = {
   preservation:    'classicon_evoker_preservation',
   augmentation:    'classicon_evoker_augmentation',
   // Hunter
+  beast:           'classicon_hunter_beastmastery',
   beast_mastery:   'classicon_hunter_beastmastery',
   beastmastery:    'classicon_hunter_beastmastery',
   marksmanship:    'classicon_hunter_marksmanship',

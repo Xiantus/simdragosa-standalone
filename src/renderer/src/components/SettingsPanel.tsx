@@ -4,6 +4,7 @@ interface Props {
   open: boolean
   raidsid?: string
   wow_path?: string
+  version?: string
   onClose: () => void
 }
 
@@ -14,7 +15,7 @@ type UpdateState =
   | { state: 'available'; version: string }
   | { state: 'error'; message: string }
 
-export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_path: initialWowPath = '', onClose }: Props): JSX.Element | null {
+export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_path: initialWowPath = '', version = '', onClose }: Props): JSX.Element | null {
   const [raidsid, setRaidsid] = useState(initialRaidsid)
   const [wowPath, setWowPath] = useState(initialWowPath)
   const [saving, setSaving] = useState(false)
@@ -142,11 +143,16 @@ export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={secondaryBtn}>Cancel</button>
-          <button type="submit" disabled={saving} style={{ ...primaryBtn, opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'Saving\u2026' : 'Save'}
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {version && (
+            <span style={{ fontSize: 11, color: 'var(--sub)' }}>v{version}</span>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+            <button type="button" onClick={onClose} style={secondaryBtn}>Cancel</button>
+            <button type="submit" disabled={saving} style={{ ...primaryBtn, opacity: saving ? 0.6 : 1 }}>
+              {saving ? 'Saving\u2026' : 'Save'}
+            </button>
+          </div>
         </div>
       </form>
     </div>
