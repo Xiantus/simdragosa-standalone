@@ -11,6 +11,7 @@ const row = (overrides: Partial<TooltipRow> = {}): TooltipRow => ({
   ilvl: 639,
   item_name: 'Sword of Testing',
   sim_date: '2025-01-01',
+  source: 'Liberation of Undermine',
   ...overrides,
 })
 
@@ -67,5 +68,23 @@ describe('buildLua', () => {
     const lua = buildLua(rows)
     expect(lua).toContain('spec="Fire"')
     expect(lua).toContain('spec="Arcane"')
+  })
+
+  it('emits source and sourceType="raid" for raid difficulty', () => {
+    const lua = buildLua([row({ difficulty: 'raid-heroic', source: 'Liberation of Undermine' })])
+    expect(lua).toContain('source="Liberation of Undermine"')
+    expect(lua).toContain('sourceType="raid"')
+  })
+
+  it('emits sourceType="dungeon" for dungeon difficulty', () => {
+    const lua = buildLua([row({ difficulty: 'dungeon-mythic10', source: 'Ara-Kara, City of Echoes' })])
+    expect(lua).toContain('source="Ara-Kara, City of Echoes"')
+    expect(lua).toContain('sourceType="dungeon"')
+  })
+
+  it('omits source/sourceType when source is null', () => {
+    const lua = buildLua([row({ source: null })])
+    expect(lua).not.toContain('source=')
+    expect(lua).not.toContain('sourceType=')
   })
 })
