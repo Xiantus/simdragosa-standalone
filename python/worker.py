@@ -166,7 +166,7 @@ def _parse_tooltip_data(report_json: dict) -> list[dict]:
                 ilvl = int(parts[4]) if parts[4] else None
             except (ValueError, TypeError):
                 continue
-            zone_name = parts[1].strip() if len(parts) > 1 else ""
+            zone_name = parts[0].strip() if len(parts) > 0 else ""
             dps_gain = round(mean_dps - base_dps, 1)
             if dps_gain <= 0:
                 continue
