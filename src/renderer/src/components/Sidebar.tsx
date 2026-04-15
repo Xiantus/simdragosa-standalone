@@ -13,10 +13,10 @@ export default function Sidebar(): JSX.Element {
     fetchCharacters()
   }, [])
 
-  // Group by spec
-  const bySpec = characters.reduce<Record<string, Character[]>>((acc, c) => {
-    if (!acc[c.spec]) acc[c.spec] = []
-    acc[c.spec].push(c)
+  // Group by character name
+  const byName = characters.reduce<Record<string, Character[]>>((acc, c) => {
+    if (!acc[c.name]) acc[c.name] = []
+    acc[c.name].push(c)
     return acc
   }, {})
 
@@ -65,10 +65,10 @@ export default function Sidebar(): JSX.Element {
               No characters yet
             </div>
           ) : (
-            Object.entries(bySpec).sort(([a], [b]) => a.localeCompare(b)).map(([spec, chars]) => (
+            Object.entries(byName).sort(([a], [b]) => a.localeCompare(b)).map(([name, chars]) => (
               <CharacterGroup
-                key={spec}
-                spec={spec}
+                key={name}
+                name={name}
                 characters={chars}
                 onEdit={handleEdit}
                 onDelete={deleteCharacter}

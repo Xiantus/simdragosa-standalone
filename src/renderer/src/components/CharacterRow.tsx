@@ -6,9 +6,10 @@ interface Props {
   character: Character
   onEdit: (char: Character) => void
   onDelete: (id: string) => void
+  hideName?: boolean
 }
 
-export default function CharacterRow({ character, onEdit, onDelete }: Props): JSX.Element {
+export default function CharacterRow({ character, onEdit, onDelete, hideName }: Props): JSX.Element {
   return (
     <div
       data-testid="character-row"
@@ -30,10 +31,12 @@ export default function CharacterRow({ character, onEdit, onDelete }: Props): JS
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {character.name}
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--sub)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+        {!hideName && (
+          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {character.name}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: 'var(--sub)', marginTop: hideName ? 0 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
           {(iconUrlFromSpecId(character.spec_id) || iconUrlFromSpecName(character.spec)) && (
             <img
               src={(iconUrlFromSpecId(character.spec_id) || iconUrlFromSpecName(character.spec))!}
