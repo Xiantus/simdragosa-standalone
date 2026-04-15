@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, net } from 'electron'
 import { join } from 'path'
 import Store from 'electron-store'
-import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, deleteTooltipRowsByCharSpecDiff, getJobResults, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, type ItemData } from './db'
+import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, deleteTooltipRowsByCharSpecDiff, getJobResults, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, migrateTooltipData, type ItemData } from './db'
 import { buildLua, writeLuaFile, resolveAddonDataPath } from './lua-export'
 import { spawnWorker, cancelAllWorkers, findPython, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
@@ -284,6 +284,7 @@ function registerIpcHandlers(): void {
             ilvl: g.ilvl ?? null,
             item_name: g.item_name ?? null,
             sim_date: new Date().toISOString().slice(0, 10),
+            source: g.zone_name ?? null,
           }))
           if (rows.length > 0) {
             deleteTooltipRowsByCharSpecDiff(db, charName, specName, difficulty)
@@ -461,6 +462,7 @@ function registerIpcHandlers(): void {
 app.whenReady().then(() => {
   db = initDb(join(app.getPath('userData'), 'simdragosa.db'))
   migrateItemNames(db)
+  migrateTooltipData(db)
   registerIpcHandlers()
   registerTriggerIpc()
   createWindow()

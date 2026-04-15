@@ -12,6 +12,7 @@ export interface TooltipRow {
   ilvl: number | null
   item_name: string | null
   sim_date: string
+  source: string | null   // zone/instance name (e.g. "Liberation of Undermine")
 }
 
 export interface JobResultRow {
@@ -46,6 +47,7 @@ export function applySchema(db: Database.Database): void {
       ilvl       INTEGER,
       item_name  TEXT,
       sim_date   TEXT NOT NULL,
+      source     TEXT,
       PRIMARY KEY (item_id, char_name, difficulty, spec)
     );
 
@@ -101,18 +103,23 @@ export function deleteCharacter(db: Database.Database, id: string): void {
   db.prepare('DELETE FROM characters WHERE id = ?').run(id)
 }
 
+export function migrateTooltipData(db: Database.Database): void {
+  try { db.exec('ALTER TABLE tooltip_data ADD COLUMN source TEXT') } catch (_) {}
+}
+
 export function upsertTooltipRows(db: Database.Database, rows: TooltipRow[]): void {
   const stmt = db.prepare(`
     INSERT INTO tooltip_data
-      (item_id, char_name, realm, spec, difficulty, dps_gain, ilvl, item_name, sim_date)
+      (item_id, char_name, realm, spec, difficulty, dps_gain, ilvl, item_name, sim_date, source)
     VALUES
-      (@item_id, @char_name, @realm, @spec, @difficulty, @dps_gain, @ilvl, @item_name, @sim_date)
+      (@item_id, @char_name, @realm, @spec, @difficulty, @dps_gain, @ilvl, @item_name, @sim_date, @source)
     ON CONFLICT(item_id, char_name, difficulty, spec) DO UPDATE SET
       realm      = excluded.realm,
       dps_gain   = excluded.dps_gain,
       ilvl       = excluded.ilvl,
       item_name  = excluded.item_name,
-      sim_date   = excluded.sim_date
+      sim_date   = excluded.sim_date,
+      source     = excluded.source
   `)
   const insertMany = db.transaction((rows: TooltipRow[]) => {
     for (const row of rows) stmt.run(row)
@@ -123,7 +130,8 @@ export function upsertTooltipRows(db: Database.Database, rows: TooltipRow[]): vo
 export function getAllTooltipData(db: Database.Database): TooltipRow[] {
   return db.prepare(`
     SELECT t.item_id, t.char_name, t.realm, t.spec, t.difficulty,
-           t.dps_gain, t.ilvl, COALESCE(t.item_name, n.name) AS item_name, t.sim_date
+           t.dps_gain, t.ilvl, COALESCE(t.item_name, n.name) AS item_name, t.sim_date,
+           t.source
     FROM tooltip_data t
     LEFT JOIN item_names n ON t.item_id = n.item_id
   `).all() as TooltipRow[]
