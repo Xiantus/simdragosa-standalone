@@ -3,13 +3,13 @@ import type { Character } from '../../../shared/ipc'
 import CharacterRow from './CharacterRow'
 
 interface Props {
-  spec: string
+  name: string
   characters: Character[]
   onEdit: (char: Character) => void
   onDelete: (id: string) => void
 }
 
-export default function CharacterGroup({ spec, characters, onEdit, onDelete }: Props): JSX.Element {
+export default function CharacterGroup({ name, characters, onEdit, onDelete }: Props): JSX.Element {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
@@ -33,13 +33,13 @@ export default function CharacterGroup({ spec, characters, onEdit, onDelete }: P
         }}
       >
         <span style={{ fontSize: 9, display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
-        {spec}
+        {name}
         <span style={{ marginLeft: 'auto', fontWeight: 400 }}>{characters.length}</span>
       </button>
       {!collapsed && (
         <div>
           {characters.map((char) => (
-            <CharacterRow key={char.id} character={char} onEdit={onEdit} onDelete={onDelete} />
+            <CharacterRow key={char.id} character={char} onEdit={onEdit} onDelete={onDelete} hideName />
           ))}
         </div>
       )}
