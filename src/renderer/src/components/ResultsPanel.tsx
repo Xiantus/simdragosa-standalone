@@ -451,17 +451,18 @@ export default function ResultsPanel({ jobs }: Props): JSX.Element {
   // Apply difficulty filter
   const filtered = diffFilter.size === 0 ? jobs : jobs.filter((j) => diffFilter.has(j.difficulty))
 
-  // Group: char_id → { charName, bySpec }
+  // Group: char_name → { charName, bySpec }
   // charOrder = first-seen order (input is already newest-completed-first)
   const charOrder: string[] = []
   const byChar = new Map<string, { charName: string; bySpec: Map<string, ActiveJob[]> }>()
 
   for (const job of filtered) {
-    if (!byChar.has(job.char_id)) {
-      byChar.set(job.char_id, { charName: job.char_name, bySpec: new Map() })
-      charOrder.push(job.char_id)
+    const nameKey = job.char_name
+    if (!byChar.has(nameKey)) {
+      byChar.set(nameKey, { charName: job.char_name, bySpec: new Map() })
+      charOrder.push(nameKey)
     }
-    const entry = byChar.get(job.char_id)!
+    const entry = byChar.get(nameKey)!
     const specKey = job.spec
       ? job.spec.charAt(0).toUpperCase() + job.spec.slice(1)
       : 'Default'
