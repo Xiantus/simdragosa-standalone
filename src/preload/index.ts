@@ -11,7 +11,7 @@ const api: ElectronAPI = {
   getSettings: () => ipcRenderer.invoke('getSettings'),
   saveSettings: (partial) => ipcRenderer.invoke('saveSettings', partial),
   getJobResults: () => ipcRenderer.invoke('getJobResults'),
-  deleteResult: (char_id, difficulty, build_label) => ipcRenderer.invoke('deleteResult', char_id, difficulty, build_label),
+  deleteResult: (char_id, difficulty, build_label, char_name, spec) => ipcRenderer.invoke('deleteResult', char_id, difficulty, build_label, char_name, spec),
   fetchItemNames: (itemIds) => ipcRenderer.invoke('fetchItemNames', itemIds),
   writeLua: () => ipcRenderer.invoke('writeLua'),
 

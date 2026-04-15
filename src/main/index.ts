@@ -233,8 +233,16 @@ function registerIpcHandlers(): void {
       .filter(Boolean)
   })
 
-  ipcMain.handle('deleteResult', (_event, char_id: string, difficulty: string, build_label: string) => {
+  ipcMain.handle('deleteResult', (_event, char_id: string, difficulty: string, build_label: string, char_name: string, spec: string) => {
     deleteJobResult(db, `${char_id}|${difficulty}|${build_label}`)
+    if (char_name && spec) {
+      deleteTooltipRowsByCharSpecDiff(db, char_name, spec, difficulty)
+      const wow_path = store.get('wow_path')
+      if (wow_path) {
+        const allRows = getAllTooltipData(db)
+        writeLuaFile(buildLua(allRows), wow_path)
+      }
+    }
   })
 
   // Sim launch (#21)
