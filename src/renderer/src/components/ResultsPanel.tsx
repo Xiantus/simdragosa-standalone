@@ -655,7 +655,7 @@ export default function ResultsPanel({ jobs }: Props): JSX.Element {
                 onDragOver={(e) => handleDragOver(charId, e)}
                 onDrop={(e) => handleDrop(charId, e)}
                 onDragEnd={handleDragEnd}
-                onDeleteJob={(job) => deleteJob(job.job_id, job.char_id, job.difficulty, job.build_label)}
+                onDeleteJob={(job) => deleteJob(job.job_id, job.char_id, job.difficulty, job.build_label, job.char_name, job.spec ?? '')}
               />
             )
           })
