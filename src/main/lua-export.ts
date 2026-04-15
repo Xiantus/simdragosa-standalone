@@ -21,12 +21,14 @@ export function buildLua(rows: TooltipRow[]): string {
     'SimdragosaDB = {',
   ]
 
-  // Group: charName → itemId → { specs: {specName: {diffKey: gain}}, ilvl, name, updated }
+  // Group: charName → itemId → { specs, ilvl, name, updated, source, sourceType }
   type ItemInfo = {
     specs: Record<string, Record<string, number>>
     ilvl: number | null
     name: string | null
     updated: string
+    source: string | null
+    sourceType: string | null   // "raid" | "dungeon"
   }
   const byChar: Record<string, Record<number, ItemInfo>> = {}
 
@@ -35,17 +37,22 @@ export function buildLua(rows: TooltipRow[]): string {
     const charKey = `${row.char_name}-${row.realm.replace(/\s+/g, '')}`
     if (!byChar[charKey]) byChar[charKey] = {}
     const charItems = byChar[charKey]
+    const sourceType = row.difficulty.startsWith('dungeon-') ? 'dungeon' : 'raid'
     if (!charItems[row.item_id]) {
-      charItems[row.item_id] = { specs: {}, ilvl: row.ilvl, name: row.item_name ?? null, updated: row.sim_date }
+      charItems[row.item_id] = {
+        specs: {}, ilvl: row.ilvl, name: row.item_name ?? null, updated: row.sim_date,
+        source: row.source ?? null, sourceType,
+      }
     }
     const item = charItems[row.item_id]
     if (!item.specs[row.spec]) item.specs[row.spec] = {}
     const diffKey = DIFF_LUA_KEY[row.difficulty] ?? row.difficulty
     item.specs[row.spec][diffKey] = row.dps_gain
-    // Keep freshest date and highest ilvl
+    // Keep freshest date and highest ilvl; fill in source if not yet set
     if (row.sim_date > item.updated) item.updated = row.sim_date
     if (row.ilvl && (!item.ilvl || row.ilvl > item.ilvl)) item.ilvl = row.ilvl
     if (row.item_name) item.name = row.item_name
+    if (row.source && !item.source) { item.source = row.source; item.sourceType = sourceType }
   }
 
   for (const [charName, items] of Object.entries(byChar).sort()) {
@@ -63,6 +70,10 @@ export function buildLua(rows: TooltipRow[]): string {
       lines.push(`      },`)
       if (info.ilvl) lines.push(`      ilvl=${info.ilvl},`)
       if (info.name) lines.push(`      name="${info.name.replace(/"/g, '\\"')}",`)
+      if (info.source) {
+        lines.push(`      source="${info.source.replace(/"/g, '\\"')}",`)
+        lines.push(`      sourceType="${info.sourceType}",`)
+      }
       lines.push(`      updated="${info.updated}",`)
       lines.push(`    },`)
     }
