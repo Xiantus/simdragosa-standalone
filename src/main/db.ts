@@ -13,6 +13,7 @@ export interface TooltipRow {
   item_name: string | null
   sim_date: string
   source: string | null   // zone/instance name (e.g. "Liberation of Undermine")
+  icon: string | null     // Wowhead icon name (e.g. "spell_holy_prayerofspirit")
 }
 
 export interface JobResultRow {
@@ -131,7 +132,7 @@ export function getAllTooltipData(db: Database.Database): TooltipRow[] {
   return db.prepare(`
     SELECT t.item_id, t.char_name, t.realm, t.spec, t.difficulty,
            t.dps_gain, t.ilvl, COALESCE(t.item_name, n.name) AS item_name, t.sim_date,
-           t.source
+           t.source, n.icon
     FROM tooltip_data t
     LEFT JOIN item_names n ON t.item_id = n.item_id
   `).all() as TooltipRow[]
