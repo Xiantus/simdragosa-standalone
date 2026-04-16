@@ -218,7 +218,14 @@ function registerIpcHandlers(): void {
         }
         if (i < missing.length - 1) await new Promise((r) => setTimeout(r, 80))
       }
-      if (Object.keys(fetched).length > 0) upsertItemNames(db, fetched)
+      if (Object.keys(fetched).length > 0) {
+        upsertItemNames(db, fetched)
+        const wow_path = store.get('wow_path')
+        if (wow_path) {
+          const allRows = getAllTooltipData(db)
+          writeLuaFile(buildLua(allRows), wow_path)
+        }
+      }
       return { ...cached, ...fetched }
     }
 
