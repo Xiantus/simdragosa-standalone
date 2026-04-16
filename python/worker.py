@@ -27,6 +27,8 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+from loot_map import ITEM_SOURCE
+
 # Configure logging to stderr only (stdout is reserved for JSON protocol)
 logging.basicConfig(
     level=logging.INFO,
@@ -166,7 +168,11 @@ def _parse_tooltip_data(report_json: dict) -> list[dict]:
                 ilvl = int(parts[4]) if parts[4] else None
             except (ValueError, TypeError):
                 continue
-            zone_name = parts[0].strip() if len(parts) > 0 else ""
+            loot_info = ITEM_SOURCE.get(item_id)
+            if loot_info:
+                zone_name = loot_info[0]
+            else:
+                zone_name = parts[0].strip() if len(parts) > 0 else ""
             dps_gain = round(mean_dps - base_dps, 1)
             if dps_gain <= 0:
                 continue
