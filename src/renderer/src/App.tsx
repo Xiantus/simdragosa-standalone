@@ -26,7 +26,7 @@ function findMatchingChar(entry: SimcExportDetected, characters: Character[]): C
 }
 
 export default function App(): JSX.Element {
-  const { is_configured, raidsid, wow_path, version, fetchSettings } = useSettingsStore()
+  const { is_configured, raidsid, wow_path, version, minimizeToTray, fetchSettings } = useSettingsStore()
   const loadHistoricalJobs = useJobStore((s) => s.loadHistoricalJobs)
   const characters = useCharacterStore((s) => s.characters)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -214,6 +214,7 @@ export default function App(): JSX.Element {
         raidsid={raidsid}
         wow_path={wow_path}
         version={version}
+        minimizeToTray={minimizeToTray}
         onClose={() => { setSettingsOpen(false); fetchSettings() }}
       />
     </div>

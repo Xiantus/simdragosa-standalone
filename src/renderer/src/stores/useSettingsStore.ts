@@ -11,6 +11,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   wow_path: '',
   is_configured: false,
   version: '',
+  minimizeToTray: false,
 
   fetchSettings: async () => {
     try {

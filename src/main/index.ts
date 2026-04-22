@@ -17,6 +17,7 @@ interface StoreSchema {
   windowBounds: { width: number; height: number; x?: number; y?: number }
   alwaysOnTop: boolean
   overlayMode: boolean
+  minimizeToTray: boolean
   triggerPosition: { x: number; y: number }
   watchSimcExports: boolean
   simcSeenTimestamps: Record<string, number>
@@ -29,6 +30,7 @@ const store = new Store<StoreSchema>({
     windowBounds: { width: 1200, height: 800 },
     alwaysOnTop: false,
     overlayMode: false,
+    minimizeToTray: false,
     triggerPosition: { x: 120, y: 120 },
     watchSimcExports: true,
     simcSeenTimestamps: {},
@@ -81,10 +83,9 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
-  // Save bounds and hide to tray instead of quitting on close
   mainWindow.on('close', (e) => {
     if (mainWindow) store.set('windowBounds', mainWindow.getBounds())
-    if (!(app as any)._quitting) {
+    if (!(app as any)._quitting && store.get('minimizeToTray')) {
       e.preventDefault()
       mainWindow?.hide()
     }
@@ -144,8 +145,10 @@ function createWindow(): void {
     if (mainWindow?.isMaximized()) mainWindow.unmaximize()
     else mainWindow?.maximize()
   })
-  // Close button sends window to tray
-  ipcMain.on('window:close', () => mainWindow?.hide())
+  ipcMain.on('window:close', () => {
+    if (store.get('minimizeToTray')) mainWindow?.hide()
+    else app.quit()
+  })
 }
 
 function registerIpcHandlers(): void {
@@ -165,9 +168,18 @@ function registerIpcHandlers(): void {
     wow_path: store.get('wow_path'),
     is_configured: Boolean(store.get('raidsid')),
     version: app.getVersion(),
+    minimizeToTray: store.get('minimizeToTray'),
   }))
   ipcMain.handle('saveSettings', (_event, partial: Partial<Settings>) => {
     if (partial.raidsid !== undefined) store.set('raidsid', partial.raidsid)
+    if (partial.minimizeToTray !== undefined) {
+      store.set('minimizeToTray', partial.minimizeToTray)
+      if (partial.minimizeToTray && mainWindow) {
+        createTray(mainWindow, store)
+      } else {
+        destroyTray()
+      }
+    }
     if (partial.wow_path !== undefined) {
       store.set('wow_path', partial.wow_path)
       // Restart watcher with the new path
@@ -482,7 +494,7 @@ app.whenReady().then(() => {
   registerTriggerIpc()
   createWindow()
   createTriggerWindow(mainWindow!, store)
-  createTray(mainWindow!, store)
+  if (store.get('minimizeToTray')) createTray(mainWindow!, store)
   setupAutoUpdater(mainWindow!)
   if (store.get('alwaysOnTop')) mainWindow!.setAlwaysOnTop(true)
   if (store.get('overlayMode')) {
@@ -512,6 +524,6 @@ app.on('before-quit', () => {
 })
 
 app.on('window-all-closed', () => {
-  // Windows: keep alive in tray; quit only via tray Quit menu
   if (process.platform === 'darwin') app.quit()
+  else if (!store.get('minimizeToTray')) app.quit()
 })

@@ -21,6 +21,7 @@ export interface Settings {
   wow_path: string
   is_configured: boolean
   version: string
+  minimizeToTray: boolean
 }
 
 export interface SimSelection {
