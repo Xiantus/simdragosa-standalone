@@ -5,6 +5,7 @@ interface Props {
   raidsid?: string
   wow_path?: string
   version?: string
+  minimizeToTray?: boolean
   onClose: () => void
 }
 
@@ -15,17 +16,19 @@ type UpdateState =
   | { state: 'available'; version: string }
   | { state: 'error'; message: string }
 
-export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_path: initialWowPath = '', version = '', onClose }: Props): JSX.Element | null {
+export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_path: initialWowPath = '', version = '', minimizeToTray: initialMinimizeToTray = false, onClose }: Props): JSX.Element | null {
   const [raidsid, setRaidsid] = useState(initialRaidsid)
   const [wowPath, setWowPath] = useState(initialWowPath)
+  const [minimizeToTray, setMinimizeToTray] = useState(initialMinimizeToTray)
   const [saving, setSaving] = useState(false)
   const [updateState, setUpdateState] = useState<UpdateState>({ state: 'idle' })
 
   useEffect(() => {
     setRaidsid(initialRaidsid)
     setWowPath(initialWowPath)
+    setMinimizeToTray(initialMinimizeToTray)
     setUpdateState({ state: 'idle' })
-  }, [initialRaidsid, initialWowPath, open])
+  }, [initialRaidsid, initialWowPath, initialMinimizeToTray, open])
 
   if (!open) return null
 
@@ -33,7 +36,7 @@ export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_
     e.preventDefault()
     setSaving(true)
     try {
-      await window.api.saveSettings({ raidsid, wow_path: wowPath })
+      await window.api.saveSettings({ raidsid, wow_path: wowPath, minimizeToTray })
       onClose()
     } finally {
       setSaving(false)
@@ -120,6 +123,16 @@ export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_
             Writes to Interface\AddOns\Simdragosa\data\SimdragosaData.lua
           </span>
         </div>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+          <input
+            type="checkbox"
+            checked={minimizeToTray}
+            onChange={(e) => setMinimizeToTray(e.target.checked)}
+            style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--accent)' }}
+          />
+          <span style={{ fontSize: 13, color: 'var(--text)' }}>Minimize to tray on close</span>
+        </label>
 
         {/* Divider */}
         <div style={{ borderTop: '1px solid var(--border)' }} />
