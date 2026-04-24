@@ -106,6 +106,8 @@ describe('tooltip_data', () => {
         ilvl: 639,
         item_name: 'Sword of Testing',
         sim_date: '2025-01-01',
+        source: null,
+        icon: null,
       },
     ]
     upsertTooltipRows(db, rows)
@@ -126,6 +128,8 @@ describe('tooltip_data', () => {
       ilvl: 630,
       item_name: null,
       sim_date: '2025-01-01',
+      source: null,
+      icon: null,
     }
     upsertTooltipRows(db, [row])
     upsertTooltipRows(db, [{ ...row, dps_gain: 200.0, sim_date: '2025-02-01' }])

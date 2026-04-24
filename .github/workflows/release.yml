@@ -5,6 +5,9 @@ name: Release
     tags:
       - 'v*'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── Create the draft GitHub Release so both platform jobs can upload to it ──
   create-release:
