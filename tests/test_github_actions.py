@@ -17,8 +17,9 @@ def test_release_uses_windows_runner():
     with open('.github/workflows/release.yml') as f:
         config = yaml.safe_load(f)
     jobs = config['jobs']
-    for job in jobs.values():
-        assert 'windows' in job['runs-on']
+    # Dual-platform CI: only the build-windows job must use a windows runner
+    assert 'build-windows' in jobs
+    assert 'windows' in jobs['build-windows']['runs-on']
 
 def test_release_has_pyinstaller_step():
     with open('.github/workflows/release.yml') as f:

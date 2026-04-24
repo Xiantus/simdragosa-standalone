@@ -5,6 +5,11 @@ interface Props {
   onComplete: () => void
 }
 
+const isMac = window.platform === 'darwin'
+const wowPathPlaceholder = isMac
+  ? 'e.g. ~/Library/Application Support/World of Warcraft/_retail_'
+  : 'e.g. C:\\Program Files (x86)\\World of Warcraft\\_retail_'
+
 export default function OnboardingFlow({ isConfigured, onComplete }: Props): JSX.Element | null {
   const [raidsid, setRaidsid] = useState('')
   const [wowPath, setWowPath] = useState('')
@@ -75,7 +80,7 @@ export default function OnboardingFlow({ isConfigured, onComplete }: Props): JSX
             type="text"
             value={wowPath}
             onChange={(e) => setWowPath(e.target.value)}
-            placeholder="e.g. C:\Program Files (x86)\World of Warcraft\_retail_\WTF\Account\...\SavedVariables"
+            placeholder={wowPathPlaceholder}
             style={{
               background: 'var(--surf2)', border: '1px solid var(--border)', borderRadius: 5,
               color: 'var(--text)', padding: '8px 12px', fontSize: 13, outline: 'none',

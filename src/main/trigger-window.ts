@@ -7,7 +7,7 @@
  */
 
 import { BrowserWindow, ipcMain, screen } from 'electron'
-import { join } from 'path'
+import { join, basename } from 'path'
 import { startWowMonitor, stopWowMonitor } from './wow-monitor'
 
 let triggerWin: BrowserWindow | null = null
@@ -90,7 +90,7 @@ export function showTriggerWindow(): void {
     // Also consider Simdragosa's own process as "allowed"
     const { app } = require('electron') as typeof import('electron')
     const ownExe = app.isPackaged
-      ? process.execPath.replace(/\\/g, '/').split('/').pop()!.replace(/\.exe$/i, '').toLowerCase()
+      ? basename(process.execPath).replace(/\.exe$/i, '').toLowerCase()
       : 'electron'
 
     const nameLc = procName.toLowerCase()

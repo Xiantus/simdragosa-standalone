@@ -12,6 +12,7 @@ const row = (overrides: Partial<TooltipRow> = {}): TooltipRow => ({
   item_name: 'Sword of Testing',
   sim_date: '2025-01-01',
   source: 'Liberation of Undermine',
+  icon: null,
   ...overrides,
 })
 
