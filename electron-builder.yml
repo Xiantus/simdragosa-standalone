@@ -7,16 +7,19 @@ files:
   - out/**/*
   - '!out/**/*.map'
 extraResources:
-  - from: dist/worker.exe
-    to: worker.exe
   - from: static/
     to: static/
+
 win:
+  extraResources:
+    - from: dist/worker.exe
+      to: worker.exe
   target:
     - target: nsis
       arch:
         - x64
   icon: resources/simdragosa-icon.ico
+
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
@@ -25,6 +28,27 @@ nsis:
   installerHeaderIcon: resources/simdragosa-icon.ico
   createDesktopShortcut: true
   createStartMenuShortcut: true
+
+mac:
+  extraResources:
+    - from: dist/worker
+      to: worker
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: resources/simdragosa-icon.icns
+  category: public.app-category.utilities
+  # Notarization (requires Apple Developer account — enable when ready):
+  # hardenedRuntime: true
+  # gatekeeperAssess: false
+  # entitlements: resources/entitlements.mac.plist
+  # entitlementsInherit: resources/entitlements.mac.plist
+
+dmg:
+  title: Simdragosa
+
 publish:
   provider: github
   owner: Xiantus

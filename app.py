@@ -73,16 +73,20 @@ REPORT_URL = RAIDBOTS_BASE + "/simbot/report/{sim_id}"
 def get_data_dir() -> Path:
     """Return the app data directory, creating it if necessary.
 
-    - Windows: %APPDATA%\Simdragosa    - Fallback (non-Windows / dev): directory next to app.py
+    - Windows: %APPDATA%\\Simdragosa
+    - macOS:   ~/Library/Application Support/Simdragosa
+    - Linux:   $XDG_DATA_HOME/Simdragosa  (~/.local/share/Simdragosa)
+    - Fallback (dev / unknown): directory next to app.py
     """
-    if os.name == "nt":
+    import sys
+    if sys.platform == "win32":
         appdata = os.environ.get("APPDATA")
-        if appdata:
-            data_dir = Path(appdata) / "Simdragosa"
-        else:
-            data_dir = Path(__file__).parent
+        data_dir = Path(appdata) / "Simdragosa" if appdata else Path(__file__).parent
+    elif sys.platform == "darwin":
+        data_dir = Path.home() / "Library" / "Application Support" / "Simdragosa"
     else:
-        data_dir = Path(__file__).parent
+        xdg = os.environ.get("XDG_DATA_HOME")
+        data_dir = Path(xdg) / "Simdragosa" if xdg else Path.home() / ".local" / "share" / "Simdragosa"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 

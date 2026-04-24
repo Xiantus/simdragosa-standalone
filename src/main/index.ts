@@ -3,7 +3,7 @@ import { join } from 'path'
 import Store from 'electron-store'
 import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, deleteTooltipRowsByCharSpecDiff, getJobResults, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, migrateTooltipData, type ItemData } from './db'
 import { buildLua, writeLuaFile, resolveAddonDataPath } from './lua-export'
-import { spawnWorker, cancelAllWorkers, findPython, type JobSpec } from './sim-runner'
+import { spawnWorker, cancelAllWorkers, findPython, getWorkerPath, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
 import { setupAutoUpdater, checkForUpdatesNow } from './updater'
 import { autoUpdater } from 'electron-updater'
@@ -381,8 +381,7 @@ function registerIpcHandlers(): void {
     try {
       const { execFileSync } = require('child_process') as typeof import('child_process')
       if (app.isPackaged) {
-        const workerPath = join(process.resourcesPath, 'worker.exe')
-        execFileSync(workerPath, ['--check-playwright'], { stdio: 'pipe', timeout: 15_000 })
+        execFileSync(getWorkerPath(), ['--check-playwright'], { stdio: 'pipe', timeout: 15_000 })
       } else {
         const py = findPython()
         execFileSync(py, ['-m', 'playwright', 'install', '--dry-run', 'chromium'], {
@@ -434,12 +433,11 @@ function registerIpcHandlers(): void {
       })
 
     if (app.isPackaged) {
-      // worker.exe has playwright bundled — it downloads chromium directly,
+      // Bundled worker binary has playwright — downloads chromium directly,
       // emitting JSON progress events on stdout.
-      const workerPath = join(process.resourcesPath, 'worker.exe')
       mainWindow?.webContents.send('playwright:progress', { percent: 0, message: 'Preparing Chromium download…' })
       await new Promise<void>((resolve, reject) => {
-        const child = spawn(workerPath, ['--install-playwright'], { stdio: ['ignore', 'pipe', 'pipe'] })
+        const child = spawn(getWorkerPath(), ['--install-playwright'], { stdio: ['ignore', 'pipe', 'pipe'] })
         let buf = ''
         child.stdout?.on('data', (chunk: Buffer) => {
           buf += chunk.toString()

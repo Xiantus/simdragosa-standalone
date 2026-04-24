@@ -116,11 +116,15 @@ export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_
             type="text"
             value={wowPath}
             onChange={(e) => setWowPath(e.target.value)}
-            placeholder="e.g. C:\Games\World of Warcraft\_retail_"
+            placeholder={window.platform === 'darwin'
+              ? 'e.g. ~/Library/Application Support/World of Warcraft/_retail_'
+              : 'e.g. C:\\Games\\World of Warcraft\\_retail_'}
             style={inputStyle}
           />
           <span style={{ fontSize: 11, color: 'var(--sub)' }}>
-            Writes to Interface\AddOns\Simdragosa\data\SimdragosaData.lua
+            {window.platform === 'darwin'
+              ? 'Writes to Interface/AddOns/Simdragosa/data/SimdragosaData.lua'
+              : 'Writes to Interface\\AddOns\\Simdragosa\\data\\SimdragosaData.lua'}
           </span>
         </div>
 

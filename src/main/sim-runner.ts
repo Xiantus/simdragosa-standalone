@@ -26,6 +26,13 @@ export interface JobSpec {
 const activeWorkers = new Map<string, ChildProcess>()
 
 export function findPython(): string {
+  if (process.platform === 'darwin') {
+    return findPythonMac()
+  }
+  return findPythonWin()
+}
+
+function findPythonWin(): string {
   const localAppData = process.env['LOCALAPPDATA'] ?? ''
   const programFiles = process.env['ProgramFiles'] ?? 'C:\\Program Files'
   const userProfile = process.env['USERPROFILE'] ?? ''
@@ -34,18 +41,14 @@ export function findPython(): string {
   // launch the Windows Store installer as a background process and never exit.
   // Skip them entirely and prefer explicit paths + the py launcher.
   const candidates: string[] = [
-    // Windows Python Launcher — works correctly when Python is installed
     'py',
-    // Explicit versioned names (not Store aliases)
     'python3.13', 'python3.12', 'python3.11', 'python3.10',
   ]
 
-  // Explicit Windows installation paths (never Store aliases)
   for (const ver of ['313', '312', '311', '310']) {
     candidates.push(`${localAppData}\\Programs\\Python\\Python${ver}\\python.exe`)
     candidates.push(`${programFiles}\\Python${ver}\\python.exe`)
   }
-  // Conda / Miniconda
   for (const dir of ['miniconda3', 'miniconda', 'anaconda3', 'anaconda']) {
     candidates.push(`${userProfile}\\${dir}\\python.exe`)
     candidates.push(`C:\\${dir}\\python.exe`)
@@ -58,9 +61,8 @@ export function findPython(): string {
       const r = spawnSync(cmd, ['--version'], { timeout: 3000, stdio: 'pipe' })
       const out = (r.stdout?.toString() ?? '') + (r.stderr?.toString() ?? '')
       if (r.status !== 0 || !/Python \d/.test(out)) continue
-      // Double-check the resolved path isn't a Store alias
-      const which = spawnSync('where', [cmd], { timeout: 2000, stdio: 'pipe' })
-      const resolved = which.stdout?.toString().split('\n')[0].trim().toLowerCase() ?? ''
+      const where = spawnSync('where', [cmd], { timeout: 2000, stdio: 'pipe' })
+      const resolved = where.stdout?.toString().split('\n')[0].trim().toLowerCase() ?? ''
       if (resolved.includes(storeDir)) continue
       return cmd
     } catch (_) {}
@@ -71,9 +73,37 @@ export function findPython(): string {
   )
 }
 
-function getWorkerPath(): string {
+function findPythonMac(): string {
+  const home = process.env['HOME'] ?? ''
+
+  const candidates: string[] = [
+    'python3.13', 'python3.12', 'python3.11', 'python3.10',
+    '/opt/homebrew/bin/python3',       // Apple Silicon Homebrew
+    '/usr/local/bin/python3',          // Intel Homebrew
+    '/usr/bin/python3',                // Xcode CLT system Python
+    `${home}/.pyenv/shims/python3`,    // pyenv
+    `${home}/miniconda3/bin/python3`,
+    `${home}/anaconda3/bin/python3`,
+  ]
+
+  for (const cmd of candidates) {
+    try {
+      const r = spawnSync(cmd, ['--version'], { timeout: 3000, stdio: 'pipe' })
+      const out = (r.stdout?.toString() ?? '') + (r.stderr?.toString() ?? '')
+      if (r.status !== 0 || !/Python \d/.test(out)) continue
+      return cmd
+    } catch (_) {}
+  }
+
+  throw new Error(
+    'Python not found. Install Python 3.10+ via Homebrew (brew install python) or from python.org.'
+  )
+}
+
+export function getWorkerPath(): string {
   if (app.isPackaged) {
-    return join(process.resourcesPath, 'worker.exe')
+    const bin = process.platform === 'win32' ? 'worker.exe' : 'worker'
+    return join(process.resourcesPath, bin)
   }
   return join(app.getAppPath(), 'python', 'worker.py')
 }
