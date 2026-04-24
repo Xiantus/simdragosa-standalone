@@ -18,8 +18,9 @@ def test_config_targets_nsis():
 def test_config_includes_backend_exe_as_extra_resource():
     with open('electron-builder.yml') as f:
         config = yaml.safe_load(f)
-    extra = config.get('extraResources', [])
-    destinations = [r['to'] if isinstance(r, dict) else r for r in extra]
+    # worker.exe lives under win.extraResources (platform-split config)
+    win_extra = config.get('win', {}).get('extraResources', [])
+    destinations = [r['to'] if isinstance(r, dict) else r for r in win_extra]
     assert 'worker.exe' in destinations
 
 def test_config_publishes_to_correct_github_repo():
