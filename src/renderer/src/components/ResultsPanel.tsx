@@ -25,7 +25,7 @@ const LS_CHAR_ORDER = 'simdragosa:char-order'
 
 interface ItemMeta { name: string }
 
-function DpsGainBars({ gains, wide = false }: { gains: DpsGain[]; wide?: boolean }): JSX.Element {
+function DpsGainBars({ gains, wide = false, metricLabel = 'dps' }: { gains: DpsGain[]; wide?: boolean; metricLabel?: string }): JSX.Element {
   const [meta, setMeta] = useState<Record<number, ItemMeta>>({})
 
   useEffect(() => {
@@ -81,7 +81,7 @@ function DpsGainBars({ gains, wide = false }: { gains: DpsGain[]; wide?: boolean
               fontSize: wide ? 12 : 11, color: 'var(--sub)', width: dpsWidth,
               textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums',
             }}>
-              +{g.dps_gain.toLocaleString(undefined, { maximumFractionDigits: 1 })} dps
+              +{g.dps_gain.toLocaleString(undefined, { maximumFractionDigits: 1 })} {metricLabel}
             </div>
           </div>
         )
@@ -140,7 +140,7 @@ function ExpandedPanel({ job, onClose }: { job: ActiveJob; onClose: () => void }
         </button>
       </div>
 
-      {job.dps_gains && <DpsGainBars gains={job.dps_gains} wide />}
+      {job.dps_gains && <DpsGainBars gains={job.dps_gains} wide metricLabel={job.build_label === 'QE Import' ? 'hps' : 'dps'} />}
     </div>
   )
 }

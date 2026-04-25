@@ -101,6 +101,17 @@ export interface JobQueued {
   build_label: string
 }
 
+export interface QeImportResult {
+  char_name: string
+  realm: string
+  spec: string
+  spec_display: string
+  report_id: string
+  url: string
+  difficulties: string[]   // e.g. ["raid-heroic", "raid-mythic"]
+  total_items: number
+}
+
 export interface PlaywrightProgress {
   percent: number
   message: string
@@ -130,6 +141,7 @@ export interface ElectronAPI {
     | { status: 'error'; message: string }
   >
   writeLua: () => Promise<{ ok: boolean; path?: string; error?: string }>
+  importQeUrl: (url: string) => Promise<QeImportResult>
   startSim: (selections: SimSelection) => Promise<JobQueued[]>
   cancelJobs: () => Promise<void>
   exportLua: () => Promise<string>
