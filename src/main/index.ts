@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, net } from 'electron'
 import { join } from 'path'
 import Store from 'electron-store'
-import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, deleteTooltipRowsByCharSpecDiff, getJobResults, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, migrateTooltipData, type ItemData } from './db'
+import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, deleteTooltipRowsByCharSpecDiff, getJobResults, upsertJobResult, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, migrateTooltipData, type ItemData } from './db'
 import { buildLua, writeLuaFile, resolveAddonDataPath } from './lua-export'
 import { spawnWorker, cancelAllWorkers, findPython, getWorkerPath, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
