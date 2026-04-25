@@ -180,10 +180,12 @@ export const useJobStore = create<JobState>((set, get) => ({
     const unsubUpdate = window.api.onJobUpdate((u) => get().handleJobUpdate(u))
     const unsubDone = window.api.onJobDone((d) => get().handleJobDone(d))
     const unsubError = window.api.onJobError((e) => get().handleJobError(e))
+    const unsubResults = window.api.onResultsUpdated?.(() => get().loadHistoricalJobs()) ?? (() => {})
     return () => {
       unsubUpdate()
       unsubDone()
       unsubError()
+      unsubResults()
     }
   },
 }))

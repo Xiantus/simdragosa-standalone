@@ -178,7 +178,7 @@ export default function ResultRow({ job }: Props): JSX.Element {
 
       {/* DPS gain bars — collapsed by default, expand on click */}
       {hasGains && expanded && (
-        <DpsGainBars gains={job.dps_gains!} metricLabel={job.build_label === 'QE Import' ? 'hps' : 'dps'} />
+        <DpsGainBars gains={job.dps_gains!} metricLabel={job.build_label?.startsWith('QE') ? 'hps' : 'dps'} />
       )}
     </div>
   )

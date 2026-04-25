@@ -140,7 +140,7 @@ function ExpandedPanel({ job, onClose }: { job: ActiveJob; onClose: () => void }
         </button>
       </div>
 
-      {job.dps_gains && <DpsGainBars gains={job.dps_gains} wide metricLabel={job.build_label === 'QE Import' ? 'hps' : 'dps'} />}
+      {job.dps_gains && <DpsGainBars gains={job.dps_gains} wide metricLabel={job.build_label?.startsWith('QE') ? 'hps' : 'dps'} />}
     </div>
   )
 }
