@@ -78,7 +78,7 @@ function DpsGainBars({ gains }: { gains: DpsGain[] }): JSX.Element {
               fontSize: 11, color: 'var(--sub)', width: 72,
               textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums',
             }}>
-              +{g.dps_gain.toLocaleString(undefined, { maximumFractionDigits: 1 })} dps
+              +{g.dps_gain.toLocaleString(undefined, { maximumFractionDigits: 1 })} {job.build_label === 'QE Import' ? 'hps' : 'dps'}
             </div>
           </div>
         )

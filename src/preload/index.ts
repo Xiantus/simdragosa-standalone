@@ -14,6 +14,7 @@ const api: ElectronAPI = {
   deleteResult: (char_id, difficulty, build_label, char_name, spec) => ipcRenderer.invoke('deleteResult', char_id, difficulty, build_label, char_name, spec),
   fetchItemNames: (itemIds) => ipcRenderer.invoke('fetchItemNames', itemIds),
   writeLua: () => ipcRenderer.invoke('writeLua'),
+  importQeUrl: (url) => ipcRenderer.invoke('importQeUrl', url),
 
   // Sim
   startSim: (selections) => ipcRenderer.invoke('startSim', selections),
