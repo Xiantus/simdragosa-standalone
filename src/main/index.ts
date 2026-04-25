@@ -8,7 +8,7 @@ import { createTray, destroyTray } from './tray'
 import { setupAutoUpdater, checkForUpdatesNow } from './updater'
 import { autoUpdater } from 'electron-updater'
 import { createTriggerWindow, showTriggerWindow, hideTriggerWindow, destroyTriggerWindow, registerTriggerIpc } from './trigger-window'
-import { destroyQeWindow } from './qe-browser'
+import { destroyQeWindow, runQeSim } from './qe-browser'
 import { startWatcher, stopWatcher } from './simc-watcher'
 import type { Character, Settings, SimSelection } from '../shared/ipc'
 
@@ -84,6 +84,8 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
+
+
   mainWindow.on('close', (e) => {
     if (mainWindow) store.set('windowBounds', mainWindow.getBounds())
     if (!(app as any)._quitting && store.get('minimizeToTray')) {
@@ -154,11 +156,15 @@ function createWindow(): void {
 
 async function runQeJob(job_id: string, char: Character, win: BrowserWindow): Promise<void> {
   try {
+    // Small delay so the startSim invoke response reaches the renderer before
+    // we start pushing job:update events — avoids a race that creates a duplicate
+    // blank entry via handleJobUpdate before the proper entry is in state.
+    await new Promise(r => setTimeout(r, 150))
     win.webContents.send('job:update', { job_id, status: 'fetching', log_line: 'Connecting to QuestionablyEpic...' })
 
-    const { runQeSim } = await import('./qe-browser')
     const data = await runQeSim(
       char.simc_string,
+      char.spec_id,
       (msg) => win.webContents.send('job:update', { job_id, status: 'running', log_line: msg }),
     )
 
