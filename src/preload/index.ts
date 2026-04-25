@@ -76,6 +76,12 @@ const api: ElectronAPI = {
     return () => ipcRenderer.off('simc:export', handler)
   },
   dismissSimcExport: (charKey, timestamp) => ipcRenderer.send('simc:dismiss', charKey, timestamp),
+
+  onResultsUpdated: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('results:updated', handler)
+    return () => ipcRenderer.off('results:updated', handler)
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

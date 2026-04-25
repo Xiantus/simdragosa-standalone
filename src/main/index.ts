@@ -8,6 +8,7 @@ import { createTray, destroyTray } from './tray'
 import { setupAutoUpdater, checkForUpdatesNow } from './updater'
 import { autoUpdater } from 'electron-updater'
 import { createTriggerWindow, showTriggerWindow, hideTriggerWindow, destroyTriggerWindow, registerTriggerIpc } from './trigger-window'
+import { destroyQeWindow } from './qe-browser'
 import { startWatcher, stopWatcher } from './simc-watcher'
 import type { Character, Settings, SimSelection } from '../shared/ipc'
 
@@ -151,6 +152,60 @@ function createWindow(): void {
   })
 }
 
+async function runQeJob(job_id: string, char: Character, win: BrowserWindow): Promise<void> {
+  try {
+    win.webContents.send('job:update', { job_id, status: 'fetching', log_line: 'Connecting to QuestionablyEpic...' })
+
+    const { runQeSim } = await import('./qe-browser')
+    const data = await runQeSim(
+      char.simc_string,
+      (msg) => win.webContents.send('job:update', { job_id, status: 'running', log_line: msg }),
+    )
+
+    const now = new Date().toISOString().slice(0, 10)
+    const charId = `${data.char_name.toLowerCase()}-${data.spec}`
+
+    for (const [difficulty, gains] of Object.entries(data.by_difficulty)) {
+      if (gains.length === 0) continue
+      const rows = gains.map((g) => ({
+        item_id: g.item_id,
+        char_name: data.char_name,
+        realm: data.realm,
+        spec: data.spec,
+        difficulty,
+        dps_gain: g.dps_gain,
+        ilvl: g.ilvl,
+        item_name: g.item_name,
+        sim_date: now,
+        source: null,
+      }))
+      deleteTooltipRowsByCharSpecDiff(db, data.char_name, data.spec, difficulty)
+      upsertTooltipRows(db, rows)
+
+      const key = `${charId}|${difficulty}|QE Auto`
+      upsertJobResult(db, key,
+        { job_id: `${job_id}-${difficulty}`, char_id: charId, char_name: data.char_name, spec: data.spec, difficulty, build_label: 'QE Auto', url: data.url, status: 'done', dps_gains: gains, ended_at: Date.now() } as any,
+        { job_id: `${job_id}-${difficulty}`, char_id: charId, char_name: data.char_name, spec: data.spec, difficulty, build_label: 'QE Auto', url: data.url, status: 'done', dps_gains: gains, ended_at: Date.now() } as any,
+      )
+    }
+
+    const wow_path = store.get('wow_path')
+    if (wow_path) {
+      const allRows = getAllTooltipData(db)
+      writeLuaFile(buildLua(allRows), wow_path)
+    }
+
+    const allGains = Object.values(data.by_difficulty).flat()
+    win.webContents.send('job:done', { job_id, url: data.url, dps_gains: allGains })
+    win.webContents.send('results:updated')
+  } catch (err) {
+    win.webContents.send('job:error', {
+      job_id,
+      message: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
 function registerIpcHandlers(): void {
   // Characters
   ipcMain.handle('getCharacters', () => getCharacters(db))
@@ -272,19 +327,22 @@ function registerIpcHandlers(): void {
     const charMap = new Map(characters.map((c) => [c.id, c]))
 
     const queued: Array<{ job_id: string; char_id: string; char_name: string; spec: string; difficulty: string; build_label: string }> = []
+    const healersSeen = new Set<string>()
 
     for (const charId of selection.character_ids) {
       const char = charMap.get(charId)
       if (!char) continue
       for (const difficulty of selection.difficulties) {
         const job_id = `${charId}-${difficulty}-${Date.now()}`
-        // Healer sims (QE Live) are temporarily disabled — skip and notify.
+
         if (HEALER_SPEC_IDS.has(char.spec_id)) {
-          mainWindow?.webContents.send('job:error', {
-            job_id,
-            char_name: char.name,
-            message: 'Healer sims are not supported yet in this version.',
-          })
+          // Run QE browser sim once per healer character (one run covers all difficulties)
+          if (!healersSeen.has(charId)) {
+            healersSeen.add(charId)
+            const qeJobId = `qe-${charId}-${Date.now()}`
+            queued.push({ job_id: qeJobId, char_id: charId, char_name: char.name, spec: char.spec, difficulty: 'all', build_label: 'QE Auto' })
+            if (mainWindow) runQeJob(qeJobId, char, mainWindow)
+          }
           continue
         }
 
@@ -585,6 +643,7 @@ app.on('before-quit', () => {
   stopWatcher()
   destroyTray()
   destroyTriggerWindow()
+  destroyQeWindow()
 })
 
 app.on('window-all-closed', () => {
