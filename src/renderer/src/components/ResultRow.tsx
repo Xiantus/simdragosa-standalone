@@ -16,7 +16,7 @@ interface Props {
 
 interface ItemMeta { name: string; icon?: string | null; source?: string | null }
 
-function DpsGainBars({ gains }: { gains: DpsGain[] }): JSX.Element {
+function DpsGainBars({ gains, metricLabel = 'dps' }: { gains: DpsGain[]; metricLabel?: string }): JSX.Element {
   const [meta, setMeta] = useState<Record<number, ItemMeta>>({})
 
   useEffect(() => {
@@ -78,7 +78,7 @@ function DpsGainBars({ gains }: { gains: DpsGain[] }): JSX.Element {
               fontSize: 11, color: 'var(--sub)', width: 72,
               textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums',
             }}>
-              +{g.dps_gain.toLocaleString(undefined, { maximumFractionDigits: 1 })} dps
+              +{g.dps_gain.toLocaleString(undefined, { maximumFractionDigits: 1 })} {metricLabel}
             </div>
           </div>
         )
@@ -178,7 +178,7 @@ export default function ResultRow({ job }: Props): JSX.Element {
 
       {/* DPS gain bars — collapsed by default, expand on click */}
       {hasGains && expanded && (
-        <DpsGainBars gains={job.dps_gains!} />
+        <DpsGainBars gains={job.dps_gains!} metricLabel={job.build_label === 'QE Import' ? 'hps' : 'dps'} />
       )}
     </div>
   )

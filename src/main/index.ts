@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, net } from 'electron'
 import { join } from 'path'
 import Store from 'electron-store'
-import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, deleteTooltipRowsByCharSpecDiff, getJobResults, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, migrateTooltipData, type ItemData } from './db'
+import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, deleteTooltipRowsByCharSpecDiff, getJobResults, upsertJobResult, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, migrateTooltipData, type ItemData } from './db'
 import { buildLua, writeLuaFile, resolveAddonDataPath } from './lua-export'
 import { spawnWorker, cancelAllWorkers, findPython, getWorkerPath, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
@@ -370,6 +370,72 @@ function registerIpcHandlers(): void {
       return { ok: true, path: resolveAddonDataPath(wow_path) }
     } catch (err: any) {
       return { ok: false, error: String(err?.message ?? err) }
+    }
+  })
+
+  // QE URL import — fetch a shared QE Upgrade Report and store results
+  ipcMain.handle('importQeUrl', async (_event, input: string) => {
+    const { extractReportId, fetchQeReport } = await import('./qe-import')
+    const reportId = extractReportId(input)
+    if (!reportId) throw new Error('Not a valid QE report URL or ID.')
+
+    const data = await fetchQeReport(reportId)
+    const now = new Date().toISOString().slice(0, 10)
+    const charId = `${data.char_name.toLowerCase()}-${data.spec}`
+    let totalItems = 0
+
+    for (const [difficulty, gains] of Object.entries(data.by_difficulty)) {
+      if (gains.length === 0) continue
+      totalItems += gains.length
+
+      // Tooltip rows for Lua export
+      const rows = gains.map((g) => ({
+        item_id: g.item_id,
+        char_name: data.char_name,
+        realm: data.realm,
+        spec: data.spec,
+        difficulty,
+        dps_gain: g.dps_gain,
+        ilvl: g.ilvl,
+        item_name: g.item_name,
+        sim_date: now,
+        source: null,
+      }))
+      deleteTooltipRowsByCharSpecDiff(db, data.char_name, data.spec, difficulty)
+      upsertTooltipRows(db, rows)
+
+      // Job result for UI display
+      const key = `${charId}|${difficulty}|QE Import`
+      const record = {
+        job_id: `qe-import-${data.report_id}-${difficulty}`,
+        char_id: charId,
+        char_name: data.char_name,
+        spec: data.spec,
+        difficulty,
+        build_label: 'QE Import',
+        url: data.url,
+        status: 'done',
+        dps_gains: gains,
+        ended_at: Date.now(),
+      }
+      upsertJobResult(db, key, record, record)
+    }
+
+    const wow_path = store.get('wow_path')
+    if (wow_path) {
+      const allRows = getAllTooltipData(db)
+      writeLuaFile(buildLua(allRows), wow_path)
+    }
+
+    return {
+      char_name: data.char_name,
+      realm: data.realm,
+      spec: data.spec,
+      spec_display: data.spec_display,
+      report_id: data.report_id,
+      url: data.url,
+      difficulties: Object.keys(data.by_difficulty),
+      total_items: totalItems,
     }
   })
 

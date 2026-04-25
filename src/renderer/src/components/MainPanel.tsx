@@ -19,6 +19,9 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
   const [selectedChars, setSelectedChars] = useState<string[]>([])
   const [selectedDiffs, setSelectedDiffs] = useState<string[]>(['raid-heroic'])
   const [luaStatus, setLuaStatus] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [qeUrl, setQeUrl] = useState('')
+  const [qeImporting, setQeImporting] = useState(false)
+  const [qeStatus, setQeStatus] = useState<{ msg: string; ok: boolean } | null>(null)
 
   useEffect(() => {
     return wireIpcEvents()
@@ -31,6 +34,23 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
       await cancelJobs()
     } else if (canRun) {
       await startSim({ character_ids: selectedChars, difficulties: selectedDiffs })
+    }
+  }
+
+  const handleQeImport = async () => {
+    if (!qeUrl.trim()) return
+    setQeImporting(true)
+    setQeStatus(null)
+    try {
+      const result = await window.api.importQeUrl(qeUrl.trim())
+      setQeStatus({ ok: true, msg: `Imported ${result.total_items} items for ${result.char_name} (${result.spec_display})` })
+      setQeUrl('')
+      await useJobStore.getState().loadHistoricalJobs()
+    } catch (err: any) {
+      setQeStatus({ ok: false, msg: err?.message ?? 'Import failed' })
+    } finally {
+      setQeImporting(false)
+      setTimeout(() => setQeStatus(null), 8000)
     }
   }
 
@@ -81,7 +101,46 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
         <RunButton disabled={!canRun} running={running} onClick={handleGo} />
       </section>
 
-      {/* Playwright install banner intentionally hidden — healer sims not yet supported */}
+      {/* QE URL import — healer specs */}
+      <section
+        style={{
+          padding: '6px 20px', borderBottom: '1px solid var(--border)',
+          background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        }}
+      >
+        <span style={{ fontSize: 11, color: 'var(--sub)', whiteSpace: 'nowrap', fontWeight: 600 }}>
+          QE REPORT
+        </span>
+        <input
+          value={qeUrl}
+          onChange={(e) => setQeUrl(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleQeImport() }}
+          placeholder="Paste QuestionablyEpic report URL…"
+          style={{
+            flex: 1, padding: '4px 8px', borderRadius: 4, fontSize: 12,
+            border: '1px solid var(--border)', background: 'var(--surf)',
+            color: 'var(--text)', outline: 'none',
+          }}
+        />
+        <button
+          onClick={handleQeImport}
+          disabled={!qeUrl.trim() || qeImporting}
+          style={{
+            padding: '4px 12px', borderRadius: 4, fontSize: 12, fontWeight: 600,
+            border: '1px solid var(--border)', background: 'var(--surf2)',
+            color: qeUrl.trim() && !qeImporting ? 'var(--text)' : 'var(--sub)',
+            cursor: qeUrl.trim() && !qeImporting ? 'pointer' : 'default',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {qeImporting ? 'Importing…' : 'Import'}
+        </button>
+        {qeStatus && (
+          <span style={{ fontSize: 11, color: qeStatus.ok ? 'var(--green)' : 'var(--red)', whiteSpace: 'nowrap' }}>
+            {qeStatus.msg}
+          </span>
+        )}
+      </section>
 
       {/* Active jobs */}
       <ActiveJobsStrip running={running} jobs={jobs} />
