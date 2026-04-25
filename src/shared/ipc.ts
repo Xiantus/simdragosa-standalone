@@ -169,6 +169,9 @@ export interface ElectronAPI {
   // SimC export detection (addon → watcher → renderer)
   onSimcExport: (callback: (entry: SimcExportDetected) => void) => () => void
   dismissSimcExport: (charKey: string, timestamp: number) => void
+
+  // Fired when a QE auto-sim completes and new results are in the DB
+  onResultsUpdated: (cb: () => void) => () => void
 }
 
 declare global {
