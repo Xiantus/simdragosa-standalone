@@ -95,16 +95,32 @@ export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_
         <h3 style={{ color: 'var(--text)', fontSize: 15, fontWeight: 700 }}>Settings</h3>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <label htmlFor="settings-raidsid" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>
-            Raidbots Session ID
-          </label>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <label htmlFor="settings-raidsid" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>
+              Raidbots Session ID
+            </label>
+            <button
+              type="button"
+              onClick={() => window.open('https://www.raidbots.com', '_blank')}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--accent)', fontSize: 11, padding: 0, fontWeight: 600,
+              }}
+            >
+              raidbots.com →
+            </button>
+          </div>
           <input
             id="settings-raidsid"
             type="text"
             value={raidsid}
             onChange={(e) => setRaidsid(e.target.value)}
             style={inputStyle}
+            placeholder="paste your raidsid cookie value here"
           />
+          <span style={{ fontSize: 11, color: 'var(--sub)', lineHeight: 1.5 }}>
+            Log in to raidbots.com, then open DevTools (F12) → Application → Cookies → copy the <code style={{ background: 'var(--surf2)', padding: '1px 4px', borderRadius: 3, fontSize: 10 }}>raidsid</code> value.
+          </span>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
