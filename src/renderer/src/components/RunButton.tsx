@@ -46,7 +46,7 @@ export default function RunButton({ disabled, running, onClick }: Props): JSX.El
         whiteSpace: 'nowrap',
       }}
     >
-      {running ? 'CANCEL' : 'GO'}
+      {running ? 'Cancel' : 'GO'}
     </button>
   )
 }

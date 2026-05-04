@@ -97,7 +97,7 @@ export default function TitleBar({ onSettingsClick }: Props = {}): JSX.Element {
             letterSpacing: '0.06em',
           }}
         >
-          SIMDRAGOSA
+          Simdragosa
         </span>
       </div>
 

@@ -127,7 +127,7 @@ export default function ActiveJobsStrip({ running, jobs }: Props): JSX.Element |
           fontFamily: 'var(--font-display)',
           letterSpacing: '0.04em',
         }}>
-          {parts.join(' · ') || `${activeJobs.length} sims`}
+          {activeJobs.length} sim{activeJobs.length !== 1 ? 's' : ''}{parts.length > 0 ? ` · ${parts.join(' · ')}` : ''}
         </span>
         {activeJobs.length > COMPACT_THRESHOLD && (
           <button
