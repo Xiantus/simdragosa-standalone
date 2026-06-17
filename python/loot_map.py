@@ -307,4 +307,17 @@ ITEM_SOURCE: dict[int, tuple[str, str]] = {
     249919: ("March on Quel'Danas", "raid"),
     249921: ("March on Quel'Danas", "raid"),
     260235: ("March on Quel'Danas", "raid"),
+
+    # --- Sporefall — Rotmire (12.0.7 patch raid) -----------------------------
+    268282: ("Sporefall", "raid"),
+    268283: ("Sporefall", "raid"),
+    268284: ("Sporefall", "raid"),
+    268285: ("Sporefall", "raid"),
+    268286: ("Sporefall", "raid"),
+    268287: ("Sporefall", "raid"),
+    268288: ("Sporefall", "raid"),
+    268289: ("Sporefall", "raid"),
+    268290: ("Sporefall", "raid"),
+    268291: ("Sporefall", "raid"),
+    268292: ("Sporefall", "raid"),
 }
