@@ -94,10 +94,13 @@ DIFFICULTY_MAP: dict[str, dict[str, Any]] = {
 }
 
 # Virtual instance ID → real instance IDs it aggregates.
-# -91 = TWW Season 1 Raids  (Nerub-ar Palace · Blackrock Depths · Liberation of Undermine)
+# -91 = Midnight Season 1 Raids
+#       (The Voidspire 1307 · March on Quel'Danas 1308 · The Dreamrift 1314 · Sporefall 1305)
+#       Sporefall (12.0.7 patch raid) is NOT in Raidbots' own -91 encounter list, so we
+#       union it in via this table — see _build_droptimizer_items.
 # -1  = TWW Season 1 M+ pool (all 8 dungeons — IDs verified against Raidbots instances.json)
 VIRTUAL_INSTANCES: dict[int, list[int]] = {
-    -91: [1307, 1308, 1314],
+    -91: [1307, 1308, 1314, 1305],
     -1:  [1268, 1269, 1270, 1271, 1274, 375, 1023, 1182],
 }
 
@@ -168,14 +171,19 @@ def _build_droptimizer_items(
     class_id           = character.get("class", 8)
 
     virtual_instance_id = instance_data["id"]
-    enc_list = instance_data.get("encounters", [])
-    if not enc_list and virtual_instance_id in VIRTUAL_INSTANCES:
+    enc_list = list(instance_data.get("encounters", []))
+    # Union Raidbots' own aggregate encounters with the sub-instances we configure.
+    # Raidbots' -91 list lags behind patch raids (e.g. Sporefall), so we append any
+    # configured-instance encounters it is missing rather than only falling back.
+    if virtual_instance_id in VIRTUAL_INSTANCES:
         sub_ids = set(VIRTUAL_INSTANCES[virtual_instance_id])
-        enc_list = [
+        seen_enc_ids = {e["id"] for e in enc_list if "id" in e}
+        enc_list += [
             enc
             for inst in all_instances
             if inst.get("id") in sub_ids
             for enc in inst.get("encounters", [])
+            if enc.get("id") not in seen_enc_ids
         ]
     virtual_encounter_ids   = {e["id"] for e in enc_list if "id" in e}
     virtual_encounter_order = {e["id"]: i for i, e in enumerate(enc_list) if "id" in e}
