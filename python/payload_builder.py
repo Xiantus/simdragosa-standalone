@@ -20,7 +20,7 @@ Typical usage
         spec_label="Fire", simc_string=simc,
     )
     target = SimTarget(
-        difficulty="raid-heroic", instance_id=-91,
+        difficulty="raid-heroic", instance_id=-102,
         spec_id=63, loot_spec_id=63,
     )
     payload = build_payload(identity, target, character_data, static)
@@ -35,73 +35,88 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Static lookup tables (moved from droptimizer.py)
+# Season configuration
 # ---------------------------------------------------------------------------
-
-# Difficulty string → Raidbots bonus ID / upgrade track metadata.
-# Champion track = raid-normal,  group 610, 6/6 bonusId 12788
-# Hero track     = raid-heroic,  group 611, 6/6 bonusId 12798
-# Myth track     = raid-mythic,  group 612, 6/6 bonusId 12806
 #
-# instance_id: which virtual/real instance pool to use (-91 = S1 raids, -92 = S1 dungeons)
-# fight_style:  Patchwerk for raids, DungeonSlice for M+ dungeons
-DIFFICULTY_MAP: dict[str, dict[str, Any]] = {
-    "raid-normal": {
-        "upgradeLevel": 12788,          # Champion 6/6 — Normal raid max ilvl
-        "levelSelectorSequence": 610,
-        "itemLevel": "Champion",
-        "season": "mid1",
-        "source": "Normal",
-        "instance_id": -91,
-        "fight_style": "Patchwerk",
-    },
-    "raid-heroic": {
-        "upgradeLevel": 12798,
-        "levelSelectorSequence": 611,
-        "itemLevel": "Hero",
-        "season": "mid1",
-        "source": "Heroic",
-        "instance_id": -91,
-        "fight_style": "Patchwerk",
-    },
-    "raid-mythic": {
-        "upgradeLevel": 12806,
-        "levelSelectorSequence": 612,
-        "itemLevel": "Myth",
-        "season": "mid1",
-        "source": "Mythic",
-        "instance_id": -91,
-        "fight_style": "Patchwerk",
-    },
-    "dungeon-mythic10": {
-        "upgradeLevel": 12806,          # Myth 6/6 — M+10 end-of-dungeon max ilvl
-        "levelSelectorSequence": 612,
-        "itemLevel": "Myth",
-        "season": "mid1",
-        "source": "M+10",
-        "instance_id": -1,
-        "fight_style": "Patchwerk",
-    },
-    "dungeon-mythic-weekly10": {
-        "upgradeLevel": 12806,          # Myth 6/6 — M+10 Great Vault track
-        "levelSelectorSequence": 612,
-        "itemLevel": "Myth",
-        "season": "mid1",
-        "source": "M+10 Vault",
-        "instance_id": -1,
-        "fight_style": "Patchwerk",
-    },
+# Everything that moves when Blizzard ships a new season/patch lives in this one
+# block.  Values are taken from Raidbots' own static data, so they can always be
+# re-derived rather than guessed:
+#
+#   season id / shortName / bonusListGroups / itemConversionId
+#       -> /static/data/<gameDataVersion>/seasons.json
+#   upgrade track bonus IDs (group -> level -> bonusId)
+#       -> /static/data/<gameDataVersion>/bonuses.json  (entries with "upgrade")
+#   virtual + real instance IDs
+#       -> /static/data/<gameDataVersion>/instances.json
+#
+# Current: Midnight Season 2 (patch 12.1) — season 37, "mid2".
+# Tracks are groups 614-618: Adventurer, Veteran, Champion, Hero, Myth.
+# Season 1 was season 34 / "mid1" / groups 607-612 and has rotated out of
+# Raidbots' bonus data entirely, so its bonus IDs no longer resolve.
+
+SEASON_ID:         int = 37
+SEASON_SHORT_NAME: str = "mid2"
+SEASON_LABEL:      str = "Season 2"
+
+# Raidbots removes a season's item-conversion floor from static data, so the
+# minLevel below is carried over from Season 1.  It is a lower bound only —
+# every Season 2 track starts well above it — so it stays permissive.
+ITEM_CONVERSION: dict[str, int] = {"id": 13, "minLevel": 220}
+
+# Upgrade track → (bonusListGroup, max-level bonusId, max level, ilvl at max).
+UPGRADE_TRACKS: dict[str, dict[str, int]] = {
+    "Adventurer": {"group": 614, "bonusId": 12822, "level": 6, "max": 6, "itemLevel": 282},
+    "Veteran":    {"group": 615, "bonusId": 12830, "level": 6, "max": 6, "itemLevel": 295},
+    "Champion":   {"group": 616, "bonusId": 12838, "level": 6, "max": 6, "itemLevel": 308},
+    "Hero":       {"group": 617, "bonusId": 12846, "level": 6, "max": 6, "itemLevel": 321},
+    "Myth":       {"group": 618, "bonusId": 12854, "level": 6, "max": 6, "itemLevel": 334},
 }
 
 # Virtual instance ID → real instance IDs it aggregates.
-# -91 = Midnight Season 1 Raids
-#       (The Voidspire 1307 · March on Quel'Danas 1308 · The Dreamrift 1314 · Sporefall 1305)
-#       Sporefall (12.0.7 patch raid) is NOT in Raidbots' own -91 encounter list, so we
-#       union it in via this table — see _build_droptimizer_items.
-# -1  = TWW Season 1 M+ pool (all 8 dungeons — IDs verified against Raidbots instances.json)
+# -102 = Midnight Season 2 Raids
+#        (The Venomous Abyss 1320 · The Tidebound Grotto 1317)
+# -1   = Midnight Season 2 M+ pool (8 dungeons)
+#
+# Raidbots' own aggregate encounter list can lag behind a patch raid (this cost
+# us Sporefall in 12.0.7), so _build_droptimizer_items unions these sub-instance
+# encounters in on top of whatever the aggregate already lists.
 VIRTUAL_INSTANCES: dict[int, list[int]] = {
-    -91: [1307, 1308, 1314, 1305],
-    -1:  [1268, 1269, 1270, 1271, 1274, 375, 1023, 1182],
+    -102: [1320, 1317],
+    -1:   [1322, 1311, 1041, 1304, 1202, 1030, 1309, 1313],
+}
+
+RAID_INSTANCE_ID:    int = -102
+DUNGEON_INSTANCE_ID: int = -1
+
+# Base item level used when an item in encounter-items.json has none of its own.
+FALLBACK_ITEM_LEVEL: int = UPGRADE_TRACKS["Hero"]["itemLevel"]
+
+
+def _difficulty(track: str, source: str, instance_id: int) -> dict[str, Any]:
+    """Build one DIFFICULTY_MAP entry from an upgrade track name."""
+    spec = UPGRADE_TRACKS[track]
+    return {
+        "upgradeLevel":          spec["bonusId"],
+        "levelSelectorSequence": spec["group"],
+        "itemLevel":             track,
+        "season":                SEASON_SHORT_NAME,
+        "source":                source,
+        "instance_id":           instance_id,
+        "fight_style":           "Patchwerk",
+    }
+
+
+# Difficulty string → Raidbots bonus ID / upgrade track metadata.
+#   Normal raid  = Champion track (6/6, ilvl 308)
+#   Heroic raid  = Hero track     (6/6, ilvl 321)
+#   Mythic raid  = Myth track     (6/6, ilvl 334)
+#   M+10 / vault = Myth track, against the dungeon pool
+DIFFICULTY_MAP: dict[str, dict[str, Any]] = {
+    "raid-normal":              _difficulty("Champion", "Normal",     RAID_INSTANCE_ID),
+    "raid-heroic":              _difficulty("Hero",     "Heroic",     RAID_INSTANCE_ID),
+    "raid-mythic":              _difficulty("Myth",     "Mythic",     RAID_INSTANCE_ID),
+    "dungeon-mythic10":         _difficulty("Myth",     "M+10",       DUNGEON_INSTANCE_ID),
+    "dungeon-mythic-weekly10":  _difficulty("Myth",     "M+10 Vault", DUNGEON_INSTANCE_ID),
 }
 
 
@@ -123,7 +138,7 @@ class CharacterIdentity:
 class SimTarget:
     """What simulation to run."""
     difficulty:    str         # "raid-heroic" | "raid-mythic"
-    instance_id:   int = -91   # -91 = Season 1 virtual instance
+    instance_id:   int = RAID_INSTANCE_ID   # -102 = Season 2 raid pool
     spec_id:       int = 63
     loot_spec_id:  int = 63
     fight_style:   str = "Patchwerk"
@@ -168,20 +183,33 @@ def _build_droptimizer_items(
     level_selector_seq = upgrade_info["levelSelectorSequence"]
     item_level_name    = upgrade_info["itemLevel"]
     season             = upgrade_info["season"]
+    track_spec         = UPGRADE_TRACKS.get(item_level_name, {})
+    track_level        = track_spec.get("level", 6)
+    track_max          = track_spec.get("max", 6)
     class_id           = character.get("class", 8)
 
     virtual_instance_id = instance_data["id"]
     enc_list = list(instance_data.get("encounters", []))
     # Union Raidbots' own aggregate encounters with the sub-instances we configure.
-    # Raidbots' -91 list lags behind patch raids (e.g. Sporefall), so we append any
-    # configured-instance encounters it is missing rather than only falling back.
+    # A season's raid aggregate can lag behind a patch raid (this cost us Sporefall
+    # in 12.0.7), so we append any configured-instance encounters it is missing
+    # rather than only falling back.
+    #
+    # Two shapes of aggregate exist and must be told apart:
+    #   * raid pools (-102) list individual *boss* encounters, so a missing boss
+    #     has to be unioned in;
+    #   * the M+ pool (-1) lists each *dungeon* as a single encounter whose id is
+    #     the dungeon's own instance id.  Unioning that dungeon's bosses on top
+    #     would match every item twice — once via its {instanceId: -1} source and
+    #     once via its real one — doubling the profilesets Raidbots has to sim.
+    # So a sub-instance already named directly by the aggregate is left alone.
     if virtual_instance_id in VIRTUAL_INSTANCES:
         sub_ids = set(VIRTUAL_INSTANCES[virtual_instance_id])
         seen_enc_ids = {e["id"] for e in enc_list if "id" in e}
         enc_list += [
             enc
             for inst in all_instances
-            if inst.get("id") in sub_ids
+            if inst.get("id") in sub_ids and inst.get("id") not in seen_enc_ids
             for enc in inst.get("encounters", [])
             if enc.get("id") not in seen_enc_ids
         ]
@@ -274,7 +302,7 @@ def _build_droptimizer_items(
             entry = {
                 "id": (
                     f"{real_inst_id}/{enc_id}/{difficulty}/{item['id']}/"
-                    f"{item.get('itemLevel', 276)}/{enchant_id}/{slot}///"
+                    f"{item.get('itemLevel', FALLBACK_ITEM_LEVEL)}/{enchant_id}/{slot}///"
                 ),
                 "slot": slot,
                 "item": {
@@ -289,13 +317,13 @@ def _build_droptimizer_items(
                     "offSpecItem":  False,
                     "upgrade": {
                         "group":    level_selector_seq,
-                        "level":    6,
-                        "max":      6,
+                        "level":    track_level,
+                        "max":      track_max,
                         "name":     item_level_name,
-                        "fullName": f"{item_level_name} 6/6",
+                        "fullName": f"{item_level_name} {track_level}/{track_max}",
                         "bonusId":  upgrade_bonus_id,
-                        "itemLevel": item.get("itemLevel", 276),
-                        "seasonId": 34,
+                        "itemLevel": item.get("itemLevel", FALLBACK_ITEM_LEVEL),
+                        "seasonId": SEASON_ID,
                     },
                     "instance":    real_instance_obj,
                     "encounter":   encounter_obj,
@@ -308,10 +336,10 @@ def _build_droptimizer_items(
                         "levelSelectorSequence":        level_selector_seq,
                         "season":                       season,
                         "levelSelectorSetUpgradeTrack": True,
-                        "seasonId":                     34,
+                        "seasonId":                     SEASON_ID,
                         "disableWarforgeLevel":         True,
                         "enableSockets":                True,
-                        "itemConversion":               {"id": 12, "minLevel": 220},
+                        "itemConversion":               dict(ITEM_CONVERSION),
                         "instance":                     real_instance_obj,
                         "encounter":                    encounter_obj,
                         "encounterType":                "boss",
@@ -379,7 +407,7 @@ def build_payload(
     source_label = upgrade_info.get("source", "Heroic")
     category     = "Dungeons" if target.difficulty.startswith("dungeon-") else "Raids"
     report_name  = (
-        f"Droptimizer \u2022 Season 1 {category} \u2022 "
+        f"Droptimizer \u2022 {SEASON_LABEL} {category} \u2022 "
         f"{source_label} \u2022 {upgrade_info['itemLevel']} 6/6"
     )
 
@@ -436,7 +464,6 @@ def build_payload(
         "essenceGorgerHighStat":           False,
         "flask":                           "",
         "food":                            "",
-        "frontendVersion":                 "aa117406d3c58c9dc83a0df039513166f66a640a",
         "gearsets":                        [],
         "huntersMark":                     True,
         "iqdStatFailChance":               0,
