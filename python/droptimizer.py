@@ -15,7 +15,6 @@ import logging
 import re
 import sys
 from pathlib import Path
-from urllib.parse import quote
 
 import requests
 
@@ -127,7 +126,7 @@ RAIDBOTS_BASE    = "https://www.raidbots.com"
 SUBMIT_URL       = RAIDBOTS_BASE + "/sim"
 STATUS_URL_TMPL  = RAIDBOTS_BASE + "/api/job/{job_id}"
 REPORT_URL_TMPL  = RAIDBOTS_BASE + "/simbot/report/{job_id}"
-WOWAPI_CHAR_TMPL = RAIDBOTS_BASE + "/wowapi/character/{region}/{realm}/{name}"
+CHARACTER_LOAD_URL = RAIDBOTS_BASE + "/api/character/load"
 
 RAIDBOTS_HEADERS = {
     "Content-Type": "application/json",
@@ -182,12 +181,46 @@ def get_site_versions(session: requests.Session) -> tuple[str, str]:
     return FALLBACK_HASH, FALLBACK_FRONTEND
 
 
-def fetch_character(session: requests.Session, region: str, realm: str, name: str) -> dict:
-    url = WOWAPI_CHAR_TMPL.format(region=region, realm=realm, name=quote(name, safe=''))
-    log.info("Fetching character data for %s/%s/%s ...", region, realm, name)
-    resp = session.get(url, timeout=15)
+# Raidbots only accepts this exact locale string; "en_GB" is rejected with
+# HTTP 422 {"error":"Invalid locale"} even for EU characters.
+CHARACTER_LOAD_LOCALE = "en_US"
+
+
+def fetch_character(session: requests.Session, simc_string: str) -> dict:
+    """Load a character profile from its SimC string.
+
+    Raidbots removed ``GET /wowapi/character/<region>/<realm>/<name>`` — it now
+    returns 404 "Nothing here!" for every character, which is what broke all
+    sims.  Character data comes from ``POST /api/character/load`` instead.
+
+    We use ``source="simc"`` rather than ``source="armory"`` because the app
+    always has a SimC string, and the armory path additionally depends on the
+    character's armory profile being complete — it rejects characters with no
+    talents on the armory (HTTP 400 ``no_talents``) even when the SimC string
+    has them.
+
+    Returns the raw response: ``{profile, gearOptions, equippedItems, bags,
+    profileCacheId, warnings}``.  ``profile`` is what the sim payload sends as
+    its ``character`` field.
+    """
+    headers = dict(RAIDBOTS_HEADERS)
+    headers["x-simc-version"] = "weekly"
+    log.info("Loading character profile from SimC string (%d chars) ...", len(simc_string))
+    resp = session.post(
+        CHARACTER_LOAD_URL,
+        json={"source": "simc", "text": simc_string},
+        headers=headers,
+        params={"locale": CHARACTER_LOAD_LOCALE, "tool": "droptimizer"},
+        timeout=45,
+    )
+    if resp.status_code >= 400:
+        # The body carries the actionable reason (e.g. no_talents, invalid simc).
+        log.error("Character load failed %s: %s", resp.status_code, resp.text[:300])
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    for warning in data.get("warnings") or []:
+        log.warning("Character load warning: %s", warning)
+    return data
 
 
 def fetch_encounter_items(session: requests.Session, static_hash: str) -> list:
@@ -215,6 +248,7 @@ def fetch_static_data(session: requests.Session) -> StaticData:
         encounter_items=encounter_items,
         instances=instances,
         frontend_version=frontend_version,
+        game_data_version=static_hash,
     )
 
 
@@ -396,7 +430,7 @@ def main() -> None:
     from raidbots_session import make_raidbots_session
     session   = make_raidbots_session(raidsid)
     static    = fetch_static_data(session)
-    character = fetch_character(session, char_cfg["region"], char_cfg["realm"], char_cfg["name"])
+    character = fetch_character(session, simc)
 
     results = []
     for run in runs:

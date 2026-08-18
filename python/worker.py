@@ -217,15 +217,14 @@ def run_raidbots_job(spec: dict, emit_fn: Callable | None = None) -> int:
 
         session = make_raidbots_session(raidsid)
 
-        character_data = fetch_character(
-            session, char["region"], char["realm"], char["name"]
-        )
-        static = fetch_static_data(session)
-
-        # Apply talent override if provided
+        # Apply talent override before loading — the character profile is now
+        # derived from the SimC string, so it must be the final one we submit.
         simc = char["simc_string"]
         if talent_code:
             simc = apply_talent(simc, talent_code)
+
+        character_data = fetch_character(session, simc)
+        static = fetch_static_data(session)
 
         diff_cfg = DIFFICULTY_MAP.get(difficulty, DIFFICULTY_MAP["raid-heroic"])
 

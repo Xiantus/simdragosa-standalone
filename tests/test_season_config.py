@@ -106,6 +106,28 @@ def _fixture_static():
     )
 
 
+def _fixture_character():
+    """Shape of a POST /api/character/load response."""
+    return {
+        "profile": {
+            "schemaVersion": 1,
+            "identity": {"name": "Xiantus", "classId": 8, "faction": 0, "specId": 63},
+            "talents": {"loadouts": [
+                {"index": 1, "name": "Inactive", "active": False,
+                 "string": "INACTIVE", "rawString": "INACTIVE-RAW"},
+                {"index": 2, "name": "Active", "active": True,
+                 "string": "ACTIVE", "rawString": "ACTIVE-RAW"},
+            ]},
+            "equipped": {"head": {"id": 1, "enchant_id": 7777},
+                         "mainHand": {"id": 2, "enchant_id": 8888}},
+        },
+        "equippedItems": {"head": {"id": 1, "inventoryType": 1, "itemLevel": 300},
+                          "main_hand": {"id": 2, "inventoryType": 17, "itemLevel": 300}},
+        "profileCacheId": "cache-abc",
+        "warnings": [],
+    }
+
+
 def _build(difficulty="raid-heroic"):
     identity = pb.CharacterIdentity(
         name="Xiantus", realm="illidan", region="us",
@@ -116,8 +138,7 @@ def _build(difficulty="raid-heroic"):
         difficulty=difficulty, instance_id=cfg["instance_id"],
         spec_id=63, loot_spec_id=63,
     )
-    character = {"class": 8, "faction": 0, "items": {}}
-    return pb.build_payload(identity, target, character, _fixture_static())
+    return pb.build_payload(identity, target, _fixture_character(), _fixture_static())
 
 
 def test_payload_targets_the_season_2_raid_pool():
@@ -126,9 +147,13 @@ def test_payload_targets_the_season_2_raid_pool():
     assert payload["droptimizer"]["upgradeLevel"] == pb.UPGRADE_TRACKS["Hero"]["bonusId"]
 
 
-def test_payload_uses_live_frontend_version():
-    """Regression: a duplicate dict key used to override this with a stale literal."""
-    assert _build()["frontendVersion"] == "deadbeef"
+def test_payload_uses_live_js_hash():
+    """Regression: a duplicate dict key used to override this with a stale literal.
+
+    The live hash now goes in frontendJsHash — frontendVersion is a fixed
+    literal Raidbots' own frontend sends.
+    """
+    assert _build()["frontendJsHash"] == "deadbeef"
 
 
 def test_missing_aggregate_encounters_are_unioned_in():
@@ -196,6 +221,62 @@ def test_mplus_items_are_not_simmed_twice():
         spec_id=63, loot_spec_id=63,
     )
     items = pb.build_payload(
-        identity, target, {"class": 8, "faction": 0, "items": {}}, _mplus_static(),
+        identity, target, _fixture_character(), _mplus_static(),
     )["droptimizerItems"]
     assert len(items) == 1
+
+
+# ---------------------------------------------------------------------------
+# /api/character/load response handling
+# ---------------------------------------------------------------------------
+
+def test_merge_equipped_overlays_enchants_onto_rich_item_data():
+    merged = pb.merge_equipped(_fixture_character())
+    # camelCase weapon slots are normalised to the payload's snake_case
+    assert set(merged) == {"head", "main_hand"}
+    # rich data from equippedItems survives...
+    assert merged["head"]["inventoryType"] == 1
+    # ...and the enchant from profile.equipped is overlaid on top
+    assert merged["head"]["enchant_id"] == 7777
+    assert merged["main_hand"]["enchant_id"] == 8888
+
+
+def test_payload_character_is_the_profile_not_the_envelope():
+    payload = _build()
+    assert payload["character"] == _fixture_character()["profile"]
+    assert payload["profileCacheId"] == "cache-abc"
+
+
+def test_class_and_faction_come_from_profile_identity():
+    payload = _build()
+    assert payload["droptimizer"]["classId"] == 8
+    assert payload["droptimizer"]["faction"] == "alliance"
+
+
+def test_active_talent_loadout_is_submitted():
+    """Regression: submitting without talents is rejected with `no_talents`."""
+    payload = _build()
+    assert payload["talents"] == "ACTIVE"
+    assert payload["activeLoadout"] == "ACTIVE"
+
+
+def test_enchants_are_read_from_the_merged_equipment():
+    for entry in _build()["droptimizerItems"]:
+        if entry["slot"] == "head":
+            assert entry["item"]["enchant_id"] == 7777
+            break
+    else:
+        raise AssertionError("no head item in fixture payload")
+
+
+def test_droptimizer_block_drops_equipped_and_adds_new_fields():
+    dropt = _build()["droptimizer"]
+    assert "equipped" not in dropt        # moved into `character`
+    assert dropt["excludedItems"] == []
+    assert "craftedGem" in dropt
+
+
+def test_version_fields_are_split():
+    payload = _build()
+    assert payload["frontendVersion"] == pb.RAIDBOTS_FRONTEND_VERSION
+    assert payload["frontendJsHash"] == "deadbeef"
