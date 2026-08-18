@@ -24,3 +24,13 @@ release/
 *.exe
 !static/simdragosa-icon.png
 droptimizer.log
+
+# Local tooling / generated artefacts
+.claude/
+graphify-out/
+
+# Per-sim payload dump written by submit_job — contains character data
+payload_debug.json
+
+# Scratch file created by a bad shell redirect (a literal "C:Temp..." filename)
+C*Tempwf_b64.txt

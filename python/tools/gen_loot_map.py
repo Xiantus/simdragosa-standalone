@@ -33,9 +33,17 @@ UA = (
 
 OUT_PATH = Path(__file__).resolve().parents[1] / "loot_map.py"
 
-# Virtual instance pools to harvest, newest first.  A pool is the aggregate
+# Virtual instance pools to harvest, in priority order.  A pool is the aggregate
 # instance Raidbots exposes in the Droptimizer instance dropdown.
-DEFAULT_POOLS = [-102, -1, -91]
+#
+# Order matters: an item that drops in a raid *and* has a catalyst entry should
+# be labelled with the raid, so the raid/dungeon pools are listed first and the
+# first pool that claims an item wins.
+#
+# The catalyst pools are included because Droptimizer sims are submitted with
+# includeConversions, so catalyst conversions show up in raid results; without
+# them those rows fall back to printing a bare instance id.
+DEFAULT_POOLS = [-102, -1, -91, -100, -87]
 
 
 def fetch_static() -> tuple[list, list]:
@@ -62,44 +70,67 @@ def fetch_static() -> tuple[list, list]:
 def build_map(
     encounter_items: list, instances: list, pools: list[int]
 ) -> dict[int, tuple[str, str]]:
-    """Map item ID -> (instance name, "raid" | "dungeon") for the given pools."""
+    """Map item ID -> (instance name, kind) for the given pools.
+
+    Pools are considered in order and the first one to claim an item wins, so
+    callers control precedence by ordering ``pools``.
+    """
     by_id = {i["id"]: i for i in instances}
 
-    # Which real instances does each pool cover?  For raid pools the aggregate
-    # lists boss encounters that belong to real instances; for the M+ pool the
-    # "encounters" are the dungeons themselves.
-    real_ids: set[int] = set()
+    def instance_of(enc_id: int, pool_id: int) -> int | None:
+        """Resolve one aggregate entry to the real instance behind it."""
+        target = by_id.get(enc_id)
+        if target is not None and target.get("id", 0) > 0:
+            # M+ pool: the "encounter" is the dungeon itself.
+            return enc_id
+        for inst in instances:
+            if inst.get("id", 0) > 0 and any(
+                e.get("id") == enc_id for e in inst.get("encounters", [])
+            ):
+                return inst["id"]
+        # Self-sourcing pool (catalyst, delves, prey): items point at the pool.
+        return pool_id if enc_id == pool_id or by_id.get(enc_id) is None else None
+
+    # Resolve each pool separately so precedence survives.
+    pool_sources: list[tuple[int, set[int]]] = []
     for pool_id in pools:
         pool = by_id.get(pool_id)
         if pool is None:
             print(f"  warning: pool {pool_id} not present in instances.json — skipped")
             continue
-        for enc in pool.get("encounters", []):
-            enc_id = enc.get("id")
-            if enc_id in by_id and by_id[enc_id].get("id", 0) > 0:
-                real_ids.add(enc_id)            # M+ pool: encounter == dungeon
-            else:
-                for inst in instances:
-                    if inst.get("id", 0) > 0 and any(
-                        e.get("id") == enc_id for e in inst.get("encounters", [])
-                    ):
-                        real_ids.add(inst["id"])
-                        break
+        real_ids = {
+            resolved
+            for enc in pool.get("encounters", [])
+            if (resolved := instance_of(enc.get("id"), pool_id)) is not None
+        }
+        pool_sources.append((pool_id, real_ids))
+
+    def label(inst_id: int) -> tuple[str, str] | None:
+        inst = by_id.get(inst_id)
+        if inst is None or not inst.get("name"):
+            return None
+        kind = inst.get("type") or "unknown"
+        if kind not in ("raid", "dungeon"):
+            # Only the name is consumed downstream (worker.py reads [0]); the
+            # kind is kept truthful rather than forced into raid/dungeon.
+            kind = "raid" if inst_id > 0 else kind
+        return inst["name"], kind
 
     result: dict[int, tuple[str, str]] = {}
     for item in encounter_items:
         # Only weapons (2) and armour (4) can ever be a droptimizer upgrade.
         if item.get("itemClass") not in (2, 4):
             continue
-        for src in item.get("sources", []):
-            inst_id = src.get("instanceId")
-            if inst_id not in real_ids:
+        source_ids = {
+            s.get("instanceId") for s in item.get("sources", []) if s.get("instanceId")
+        }
+        for _pool_id, real_ids in pool_sources:
+            hit = source_ids & real_ids
+            if not hit:
                 continue
-            inst = by_id[inst_id]
-            name = inst.get("name")
-            kind = "raid" if inst.get("type") == "raid" else "dungeon"
-            if name:
-                result[item["id"]] = (name, kind)
+            resolved = label(sorted(hit)[0])
+            if resolved:
+                result[item["id"]] = resolved
             break
     return result
 
