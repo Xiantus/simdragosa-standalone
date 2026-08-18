@@ -58,6 +58,10 @@ SEASON_ID:         int = 37
 SEASON_SHORT_NAME: str = "mid2"
 SEASON_LABEL:      str = "Season 2"
 
+# Raidbots' frontend sends this as a fixed literal, separate from the hashed
+# JS bundle name (which now goes in frontendJsHash).
+RAIDBOTS_FRONTEND_VERSION: str = "c3efae61cb2aa1649cd6711ca78c0f74b61aaf89"
+
 # Raidbots removes a season's item-conversion floor from static data, so the
 # minLevel below is carried over from Season 1.  It is a lower bound only —
 # every Season 2 track starts well above it — so it stays permissive.
@@ -149,9 +153,10 @@ class SimTarget:
 @dataclass(frozen=True)
 class StaticData:
     """Pre-fetched Raidbots static data needed by build_payload."""
-    encounter_items:  list
-    instances:        list
-    frontend_version: str
+    encounter_items:   list
+    instances:         list
+    frontend_version:  str
+    game_data_version: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -170,11 +175,42 @@ def get_slot_name(inventory_type: int) -> str | None:
     }.get(inventory_type)
 
 
+# Raidbots' profile.equipped uses camelCase for the weapon slots while the rest
+# of the payload (and equippedItems) uses snake_case.
+_PROFILE_SLOT_ALIASES = {"mainHand": "main_hand", "offHand": "off_hand"}
+
+
+def merge_equipped(character: dict) -> dict:
+    """Flatten a /api/character/load response into slot -> item dict.
+
+    The response splits what the old /wowapi/character endpoint returned as one
+    ``items`` map: ``equippedItems`` carries the rich item data (inventoryType,
+    itemLevel, stats) while ``profile.equipped`` carries what the character has
+    actually done to each piece (enchant_id, gem_id, bonusLists).  We need both
+    on one object, so overlay the latter onto the former.
+    """
+    profile   = character.get("profile") or {}
+    rich      = character.get("equippedItems") or {}
+    overlay   = profile.get("equipped") or {}
+
+    merged: dict[str, dict] = {}
+    for slot, item in rich.items():
+        if isinstance(item, dict):
+            merged[_PROFILE_SLOT_ALIASES.get(slot, slot)] = dict(item)
+    for slot, item in overlay.items():
+        if not isinstance(item, dict):
+            continue
+        key = _PROFILE_SLOT_ALIASES.get(slot, slot)
+        merged.setdefault(key, {}).update(item)
+    return merged
+
+
 def _build_droptimizer_items(
     encounter_items: list,
     instance_data:   dict,
     difficulty:      str,
-    character:       dict,
+    class_id:        int,
+    equipped:        dict,
     upgrade_info:    dict,
     all_instances:   list,
 ) -> list:
@@ -186,7 +222,6 @@ def _build_droptimizer_items(
     track_spec         = UPGRADE_TRACKS.get(item_level_name, {})
     track_level        = track_spec.get("level", 6)
     track_max          = track_spec.get("max", 6)
-    class_id           = character.get("class", 8)
 
     virtual_instance_id = instance_data["id"]
     enc_list = list(instance_data.get("encounters", []))
@@ -280,7 +315,7 @@ def _build_droptimizer_items(
                 bonus_lists = [13668] + bonus_lists
 
             enchant_id = 0
-            for eq_item in character.get("items", {}).values():
+            for eq_item in equipped.values():
                 if not isinstance(eq_item, dict):
                     continue
                 if get_slot_name(eq_item.get("inventoryType", 0)) == slot:
@@ -377,7 +412,7 @@ def build_payload(
     Args:
         identity:  Character name/realm/region/spec/simc.
         target:    Simulation parameters (difficulty, spec IDs, etc.).
-        character: Raw ``/wowapi/character`` response from Raidbots.
+        character: Raw ``POST /api/character/load`` response from Raidbots.
         static:    Pre-fetched encounter items, instances, frontend version.
 
     Returns:
@@ -389,20 +424,36 @@ def build_payload(
         {"id": target.instance_id},
     )
 
+    # /api/character/load returns {profile, equippedItems, profileCacheId, ...}.
+    # The sim payload sends `profile` as its `character` field and passes
+    # `profileCacheId` alongside so the backend can reuse the cached profile.
+    profile          = character.get("profile") or {}
+    profile_cache_id = character.get("profileCacheId")
+    char_identity    = profile.get("identity") or {}
+    equipped         = merge_equipped(character)
+
+    # Talents now have to be sent explicitly — the backend no longer digs them
+    # out of the SimC text and rejects the sim with `no_talents` if they are
+    # absent.  Raidbots picks the loadout flagged active and submits its
+    # `string` (falling back to `rawString`), so mirror that.
+    loadouts = (profile.get("talents") or {}).get("loadouts") or []
+    active_loadout_obj = next(
+        (l for l in loadouts if isinstance(l, dict) and l.get("active")),
+        loadouts[0] if loadouts else None,
+    )
+    active_loadout = None
+    if isinstance(active_loadout_obj, dict):
+        active_loadout = (
+            active_loadout_obj.get("string") or active_loadout_obj.get("rawString")
+        )
+
+    class_id = char_identity.get("classId", 8)
+    faction  = "alliance" if char_identity.get("faction", 0) == 0 else "horde"
+
     droptimizer_items = _build_droptimizer_items(
         static.encounter_items, instance_data, target.difficulty,
-        character, upgrade_info, static.instances,
+        class_id, equipped, upgrade_info, static.instances,
     )
-
-    class_id = character.get("class", 8)
-    faction  = "alliance" if character.get("faction", 0) == 0 else "horde"
-
-    # Strip None and non-dict slots — Raidbots backend 500s on nil entries.
-    clean_items = {
-        k: v for k, v in character.get("items", {}).items()
-        if isinstance(v, dict)
-    }
-    character = {**character, "items": clean_items}
 
     source_label = upgrade_info.get("source", "Heroic")
     category     = "Dungeons" if target.difficulty.startswith("dungeon-") else "Raids"
@@ -421,10 +472,15 @@ def build_payload(
             "realm":  identity.realm,
             "name":   identity.name,
         },
-        "character":        character,
+        "character":        profile,
+        "talents":          active_loadout,
+        "activeLoadout":    active_loadout,
+        "profileCacheId":   profile_cache_id,
         "reportName":       report_name,
         "frontendHost":     "www.raidbots.com",
-        "frontendVersion":  static.frontend_version,
+        "frontendVersion":  RAIDBOTS_FRONTEND_VERSION,
+        "frontendJsHash":   static.frontend_version,
+        "gameDataVersion":  static.game_data_version,
         "iterations":       target.iterations,
         "fightStyle":       target.fight_style,
         "fightLength":      300,
@@ -485,7 +541,6 @@ def build_payload(
         "surgingVitality":                 0,
         "symbioticPresence":               22,
         "talentSets":                      [],
-        "talents":                         None,
         "temporaryEnchant":                "",
         "unboundChangelingStatType":       "",
         "undulatingTides":                 100,
@@ -493,7 +548,6 @@ def build_payload(
         "whisperingIncarnateIconRoles":    "dps/heal/tank",
         "worldveinAllies":                 0,
         "droptimizer": {
-            "equipped":           character.get("items", {}),
             "instance":           target.instance_id,
             **( {"encounter": -1} if target.difficulty.startswith("dungeon-") else {} ),
             "difficulty":         target.difficulty,
@@ -506,8 +560,10 @@ def build_payload(
             "lootSpecId":         target.loot_spec_id,
             "faction":            faction,
             "craftedStats":       target.crafted_stats,
+            "craftedGem":         None,
             "offSpecItems":       False,
             "includeConversions": True,
+            "excludedItems":      [],
         },
         "droptimizerItems": droptimizer_items,
         "simOptions": {

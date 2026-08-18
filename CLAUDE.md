@@ -89,3 +89,26 @@ stored results keep their source label.
   encounter whose id is the dungeon's instance id. Do not union its bosses in —
   every item would be simmed twice. `_build_droptimizer_items` guards this.
 - `tests/test_season_config.py` pins the whole wiring. Run it first.
+
+## Raidbots API notes
+
+- Character data comes from `POST /api/character/load`, **not** the old
+  `GET /wowapi/character/<region>/<realm>/<name>` (removed in 12.1 — it now
+  returns 404 "Nothing here!" for every character). Only `/wowapi/.../image/...`
+  survives.
+- Send `source: "simc"` with the SimC string. `source: "armory"` additionally
+  requires the character's armory profile to be complete and fails with
+  `no_talents` when it is not.
+- `locale` must be exactly `en_US`. `en_GB` is rejected with HTTP 422
+  `{"error":"Invalid locale"}` even for EU characters.
+- The response envelope is `{profile, gearOptions, equippedItems, bags,
+  profileCacheId, warnings}`. The sim payload sends `profile` as its
+  `character` field and `profileCacheId` alongside it.
+- Equipment is split across two objects: `equippedItems` has the rich item data
+  (inventoryType, itemLevel, stats), `profile.equipped` has enchant_id/gem_id/
+  bonusLists. `merge_equipped()` overlays them. Weapon slots are camelCase in
+  `profile.equipped` (`mainHand`) and snake_case everywhere else.
+- Talents must be submitted explicitly now — `talents` and `activeLoadout` both
+  take the active loadout's `string`. Omitting them fails with `no_talents`.
+- `frontendVersion` is a fixed literal in Raidbots' frontend; the hashed JS
+  bundle name goes in `frontendJsHash`, and `gameDataVersion` is sent too.
