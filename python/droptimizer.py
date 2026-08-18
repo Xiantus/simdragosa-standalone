@@ -139,6 +139,7 @@ RAIDBOTS_HEADERS = {
 from payload_builder import (
     CharacterIdentity, SimTarget, StaticData,
     build_payload, DIFFICULTY_MAP, VIRTUAL_INSTANCES,
+    RAID_INSTANCE_ID as VIRTUAL_RAID_INSTANCE,
 )
 
 # ---------------------------------------------------------------------------
@@ -166,8 +167,8 @@ def get_site_versions(session: requests.Session) -> tuple[str, str]:
     Extract the static data hash and frontend version from the Raidbots page.
     Returns (static_hash, frontend_version).
     """
-    FALLBACK_HASH    = "9de61c8c43f6275a761d44bf4683b542"
-    FALLBACK_FRONTEND = "76b791ae3944c21fb3d4"
+    FALLBACK_HASH    = "19c74c81f5b1a207d2529afe664ae3a5"
+    FALLBACK_FRONTEND = "873173bcbb54b2dd8b59"
     try:
         page = session.get(RAIDBOTS_BASE + "/simbot/droptimizer", timeout=15)
         # Both values are embedded in the inline initialData script block
@@ -408,7 +409,7 @@ def main() -> None:
         )
         target = SimTarget(
             difficulty=run.get("difficulty", "raid-heroic"),
-            instance_id=run.get("instance_id", -91),
+            instance_id=run.get("instance_id", VIRTUAL_RAID_INSTANCE),
             spec_id=run.get("spec_id", 63),
             loot_spec_id=run.get("loot_spec_id", run.get("spec_id", 63)),
             fight_style=run.get("fight_style", "Patchwerk"),
@@ -421,7 +422,7 @@ def main() -> None:
 
         results.append({
             "job_id":     sim_id,
-            "instance":   run.get("instance_id", -91),
+            "instance":   run.get("instance_id", VIRTUAL_RAID_INSTANCE),
             "difficulty": run.get("difficulty"),
             "success":    success,
         })
