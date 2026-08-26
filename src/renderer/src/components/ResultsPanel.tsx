@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { iconUrlFromSpecName } from '../lib/specIcons'
 import { useJobStore, type ActiveJob } from '../stores/useJobStore'
+import { exportableLinks, formatLinkList, formatDiscordMessage } from '../lib/reportLinks'
 import type { DpsGain } from '../../../shared/ipc'
 
 const DIFF_LABELS: Record<string, string> = {
@@ -18,6 +19,11 @@ const DIFF_ORDER = [
   'dungeon-mythic10',
   'dungeon-mythic-weekly10',
 ]
+
+function diffRank(diff: string): number {
+  const i = DIFF_ORDER.indexOf(diff)
+  return i === -1 ? 99 : i
+}
 
 const LS_CHAR_ORDER = 'simdragosa:char-order'
 
@@ -474,6 +480,25 @@ function SpecSection({ spec, jobs, onDeleteJob }: {
   )
 }
 
+// ── Report link export ───────────────────────────────────────────────────────
+
+function useCopyFlash(): [string | null, (key: string, text: string) => void] {
+  const [copied, setCopied] = useState<string | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
+
+  function copy(key: string, text: string) {
+    if (!text) return
+    navigator.clipboard.writeText(text).catch(() => {})
+    setCopied(key)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setCopied(null), 1500)
+  }
+
+  return [copied, copy]
+}
+
 // ── Character section (collapsible + draggable) ───────────────────────────────
 
 interface CharacterSectionProps {
@@ -499,8 +524,11 @@ function CharacterSection({
   const [collapsed, setCollapsed] = useState(false)
   const [headerHovered, setHeaderHovered] = useState(false)
 
+  const [copied, copy] = useCopyFlash()
+
   const allJobs = [...specMap.values()].flat()
   const doneCount = allJobs.filter((j) => j.status === 'done').length
+  const linkCount = exportableLinks(allJobs).length
   const hue = nameToHue(charName)
   const charAccent = `hsl(${hue}, 60%, 62%)`
 
@@ -578,6 +606,27 @@ function CharacterSection({
             ▼
           </span>
         </div>
+
+        {/* Copy this character's Raidbots links */}
+        {linkCount > 0 && (headerHovered || copied) && (
+          <button
+            onClick={(e) => { e.stopPropagation(); copy('char', formatLinkList(allJobs)) }}
+            title={`Copy ${linkCount} Raidbots link${linkCount !== 1 ? 's' : ''}, one per line`}
+            style={{
+              background: 'none',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              color: copied ? 'var(--green)' : 'var(--sub)',
+              fontSize: 10,
+              fontWeight: 600,
+              cursor: 'pointer',
+              padding: '2px 7px',
+              flexShrink: 0,
+            }}
+          >
+            {copied ? 'Copied ✓' : `⧉ ${linkCount} link${linkCount !== 1 ? 's' : ''}`}
+          </button>
+        )}
       </div>
 
       {/* Body */}
@@ -603,6 +652,7 @@ interface Props {
 export default function ResultsPanel({ jobs }: Props): JSX.Element {
   const deleteJob = useJobStore((s) => s.deleteJob)
   const [diffFilter, setDiffFilter] = useState<Set<string>>(new Set())
+  const [copied, copy] = useCopyFlash()
 
   const [customOrder, setCustomOrder] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem(LS_CHAR_ORDER) ?? '[]') }
@@ -713,7 +763,16 @@ export default function ResultsPanel({ jobs }: Props): JSX.Element {
     })
   }
 
-  const showControls = allDiffs.length > 1 || byChar.size > 1
+  // Jobs in the order they appear on screen, so exported links read top-to-bottom
+  const orderedJobs = sortedCharIds.flatMap((charId) => {
+    const { bySpec } = byChar.get(charId)!
+    return [...bySpec.keys()].sort().flatMap((spec) =>
+      [...bySpec.get(spec)!].sort((a, b) => diffRank(a.difficulty) - diffRank(b.difficulty)),
+    )
+  })
+  const linkCount = exportableLinks(orderedJobs).length
+
+  const showControls = allDiffs.length > 1 || byChar.size > 1 || linkCount > 0
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -771,8 +830,54 @@ export default function ResultsPanel({ jobs }: Props): JSX.Element {
             </div>
           )}
 
-          {byChar.size > 1 && (
+          {linkCount > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
+              <span style={{
+                fontSize: 10,
+                color: 'var(--sub)',
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                fontFamily: 'var(--font-display)',
+              }}>
+                EXPORT
+              </span>
+              <button
+                onClick={() => copy('links', formatLinkList(orderedJobs))}
+                title={`Copy ${linkCount} Raidbots report link${linkCount !== 1 ? 's' : ''}, one per line — paste into a bulk droptimizer importer`}
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: 10,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: `1px solid ${copied === 'links' ? 'var(--green)' : 'var(--border)'}`,
+                  background: 'var(--surf2)',
+                  color: copied === 'links' ? 'var(--green)' : 'var(--sub)',
+                }}
+              >
+                {copied === 'links' ? 'Copied ✓' : `⧉ ${linkCount} link${linkCount !== 1 ? 's' : ''}`}
+              </button>
+              <button
+                onClick={() => copy('discord', formatDiscordMessage(orderedJobs, DIFF_LABELS))}
+                title="Copy the same links with character / spec / difficulty labels, ready to post in Discord"
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: 10,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: `1px solid ${copied === 'discord' ? 'var(--green)' : 'var(--border)'}`,
+                  background: 'var(--surf2)',
+                  color: copied === 'discord' ? 'var(--green)' : 'var(--sub)',
+                }}
+              >
+                {copied === 'discord' ? 'Copied ✓' : '⧉ Discord'}
+              </button>
+            </div>
+          )}
+
+          {byChar.size > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: linkCount > 0 ? 0 : 'auto' }}>
               <span style={{
                 fontSize: 10,
                 color: 'var(--sub)',
