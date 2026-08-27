@@ -33,5 +33,9 @@ const contextBridge = {
   exposeInMainWorld: jest.fn(),
 }
 
-export { ipcMain, ipcRenderer, app, BrowserWindow, contextBridge }
-export default { ipcMain, ipcRenderer, app, BrowserWindow, contextBridge }
+const net = {
+  fetch: jest.fn(),
+}
+
+export { ipcMain, ipcRenderer, app, BrowserWindow, contextBridge, net }
+export default { ipcMain, ipcRenderer, app, BrowserWindow, contextBridge, net }

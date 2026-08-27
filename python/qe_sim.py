@@ -1,4 +1,12 @@
-"""qe_sim.py — QuestionablyEpic Upgrade Finder automation for healer specs."""
+"""qe_sim.py — QuestionablyEpic Upgrade Finder automation for healer specs.
+
+NOTE: the desktop app does not use this module.  Healer sims run through
+``src/main/qe-browser.ts``, which drives a hidden Electron BrowserWindow and
+needs no Playwright install.  This Playwright version is kept for headless /
+CLI use only and has NOT been updated for QE's Aug 2026 content-settings
+rewrite: it leaves the raid difficulty and Mythic+ key level at whatever QE
+defaults to (Mythic raid + "+10") instead of running a pass per difficulty.
+"""
 
 import logging
 import re
@@ -58,7 +66,7 @@ def run_qe_upgradefinder(simc: str, spec_id: int = 0, timeout_minutes: int = 5) 
       3. Click IMPORT GEAR to open the SimC paste dialog
       4. Paste the SimC string and click SUBMIT
       5. Wait for the dialog to auto-close (QE processes the SimC)
-      6. Click GO! (HEROIC MAX + MYTHIC MAX are pre-selected by default)
+      6. Click GO! (leaves QE's default difficulty selection alone)
       7. Wait for the URL to navigate to /upgradereport/...
 
     Returns the shareable report URL.  Raises RuntimeError on failure.
@@ -150,7 +158,7 @@ def run_qe_upgradefinder(simc: str, spec_id: int = 0, timeout_minutes: int = 5) 
             log.info("QE: pre-GO screenshot saved.")
 
             # ── Step 6: Click GO! ─────────────────────────────────────────────
-            # HEROIC (MAX) and MYTHIC (MAX) are already selected by default.
+            # Runs against QE's default difficulty selection — see module docstring.
             go_btn = page.locator("button").filter(
                 has_text=re.compile(r"^\s*go[!.]?\s*$", re.I)
             ).first

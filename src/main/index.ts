@@ -9,6 +9,7 @@ import { setupAutoUpdater, checkForUpdatesNow } from './updater'
 import { autoUpdater } from 'electron-updater'
 import { createTriggerWindow, showTriggerWindow, hideTriggerWindow, destroyTriggerWindow, registerTriggerIpc } from './trigger-window'
 import { destroyQeWindow, runQeSim } from './qe-browser'
+import { extractReportId, fetchQeReport } from './qe-import'
 import { startWatcher, stopWatcher } from './simc-watcher'
 import type { Character, Settings, SimSelection } from '../shared/ipc'
 
@@ -154,7 +155,12 @@ function createWindow(): void {
   })
 }
 
-async function runQeJob(job_id: string, char: Character, win: BrowserWindow): Promise<void> {
+async function runQeJob(
+  job_id: string,
+  char: Character,
+  difficulties: string[],
+  win: BrowserWindow,
+): Promise<void> {
   try {
     // Small delay so the startSim invoke response reaches the renderer before
     // we start pushing job:update events — avoids a race that creates a duplicate
@@ -165,6 +171,7 @@ async function runQeJob(job_id: string, char: Character, win: BrowserWindow): Pr
     const data = await runQeSim(
       char.simc_string,
       char.spec_id,
+      difficulties,
       (msg) => win.webContents.send('job:update', { job_id, status: 'running', log_line: msg }),
     )
 
@@ -188,11 +195,11 @@ async function runQeJob(job_id: string, char: Character, win: BrowserWindow): Pr
       deleteTooltipRowsByCharSpecDiff(db, data.char_name, data.spec, difficulty)
       upsertTooltipRows(db, rows)
 
+      // Each raid difficulty is its own QE report, so link the matching one.
+      const url = data.url_by_difficulty?.[difficulty] ?? data.url
       const key = `${charId}|${difficulty}|QE Auto`
-      upsertJobResult(db, key,
-        { job_id: `${job_id}-${difficulty}`, char_id: charId, char_name: data.char_name, spec: data.spec, difficulty, build_label: 'QE Auto', url: data.url, status: 'done', dps_gains: gains, ended_at: Date.now() } as any,
-        { job_id: `${job_id}-${difficulty}`, char_id: charId, char_name: data.char_name, spec: data.spec, difficulty, build_label: 'QE Auto', url: data.url, status: 'done', dps_gains: gains, ended_at: Date.now() } as any,
-      )
+      const record = { job_id: `${job_id}-${difficulty}`, char_id: charId, char_name: data.char_name, spec: data.spec, difficulty, build_label: 'QE Auto', url, status: 'done', dps_gains: gains, ended_at: Date.now() }
+      upsertJobResult(db, key, record as any, record as any)
     }
 
     const wow_path = store.get('wow_path')
@@ -342,12 +349,13 @@ function registerIpcHandlers(): void {
         const job_id = `${charId}-${difficulty}-${Date.now()}`
 
         if (HEALER_SPEC_IDS.has(char.spec_id)) {
-          // Run QE browser sim once per healer character (one run covers all difficulties)
+          // One QE job per healer character — it runs a pass per selected raid
+          // difficulty internally and picks up the M+ rows along the way.
           if (!healersSeen.has(charId)) {
             healersSeen.add(charId)
             const qeJobId = `qe-${charId}-${Date.now()}`
             queued.push({ job_id: qeJobId, char_id: charId, char_name: char.name, spec: char.spec, difficulty: 'all', build_label: 'QE Auto' })
-            if (mainWindow) runQeJob(qeJobId, char, mainWindow)
+            if (mainWindow) runQeJob(qeJobId, char, selection.difficulties, mainWindow)
           }
           continue
         }
@@ -439,7 +447,7 @@ function registerIpcHandlers(): void {
 
   // QE URL import — fetch a shared QE Upgrade Report and store results
   ipcMain.handle('importQeUrl', async (_event, input: string) => {
-    const { extractReportId, fetchQeReport } = await import('./qe-import')
+
     const reportId = extractReportId(input)
     if (!reportId) throw new Error('Not a valid QE report URL or ID.')
 
