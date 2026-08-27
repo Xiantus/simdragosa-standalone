@@ -2,15 +2,15 @@
 // Drives a hidden Electron BrowserWindow to run QuestionablyEpic Upgrade Finder sims.
 // Intercepts the addUpgradeReport.php POST to capture results without Playwright.
 import { BrowserWindow, session, app } from 'electron'
+import { difficultyKeyForRow, QE_M10_INDEX, QE_RAID_LABELS, QE_RAID_TOGGLE } from './qe-import'
 import type { QeImportData, QeGain } from './qe-import'
 
 const QE_UF_URL  = 'https://questionablyepic.com/live/upgradefinder'
 
-const DIFF_KEY: Record<string, string> = {
-  '5_Raid':    'raid-heroic',
-  '7_Raid':    'raid-mythic',
-  '6_Dungeon': 'dungeon-mythic10',
-}
+// QE runs one raid difficulty per report, so a run covering Normal + Heroic +
+// Mythic needs three passes.  Mythic+ is orthogonal — every pass also returns
+// the +10 rows — so the dungeon results are taken from the first pass only.
+const QE_PASS_TIMEOUT_MS = 180_000
 
 // Maps WoW spec_id → exact name used in QE's MUI Select `data-value` attribute
 const SPEC_ID_TO_QE_DROPDOWN: Record<number, string> = {
@@ -140,9 +140,7 @@ function parseQeReport(jsonBody: string): QeImportData {
   const byDiff: Record<string, QeGain[]> = {}
 
   for (const r of report.results ?? []) {
-    const diffKey = r.dropDifficulty != null && r.dropDifficulty !== ''
-      ? `${r.dropDifficulty}_${r.dropLoc}` : null
-    const mapped = diffKey ? DIFF_KEY[diffKey] : null
+    const mapped = difficultyKeyForRow(r)
     if (!mapped) continue
     if (!byDiff[mapped]) byDiff[mapped] = []
     byDiff[mapped].push({
@@ -168,15 +166,48 @@ function parseQeReport(jsonBody: string): QeImportData {
   }
 }
 
-export async function runQeSim(
+/**
+ * JS that puts QE's content toggles into the state one pass needs.
+ *
+ * The toggle groups render in a fixed order — 4 raid difficulties, 8 Mythic+
+ * key levels, then 3 item types (Drop / Upgraded / Bonus Roll) — so each button
+ * is found by label first and by ordinal as a fallback, in case QE is showing a
+ * non-English locale.  All three item types stay on: the fully-upgraded and
+ * vault rows they produce are the ones we actually read.
+ */
+function configureTogglesScript(raidLabel: string, raidIndex: number): string {
+  return `(() => {
+    var btns = Array.from(document.querySelectorAll('button.MuiToggleButton-root'))
+    if (btns.length < 15) return 'unexpected toggle count: ' + btns.length
+    var raid = btns.slice(0, 4), dungeon = btns.slice(4, 12), types = btns.slice(12, 15)
+    function norm(b) { return (b.textContent || '').replace(/\\s+/g, ' ').trim() }
+    function pick(list, label, idx) {
+      return list.filter(function (b) { return norm(b) === label })[0] || list[idx]
+    }
+    function press(b) {
+      if (!b || b.getAttribute('aria-pressed') === 'true') return null
+      b.click()
+      return norm(b)
+    }
+    var changed = []
+    var r = press(pick(raid, ${JSON.stringify(raidLabel)}, ${raidIndex}))
+    if (r) changed.push('raid=' + r)
+    var d = press(pick(dungeon, '+10', ${QE_M10_INDEX}))
+    if (d) changed.push('m+=' + d)
+    types.forEach(function (t) { var c = press(t); if (c) changed.push('type=' + c) })
+    return changed.length ? changed.join(', ') : 'already set'
+  })()`
+}
+
+/** Run one full Upgrade Finder pass for a single raid difficulty. */
+async function runQePass(
+  win: BrowserWindow,
   simcString: string,
-  specId: number,
+  specLabel: string,
+  raidLabel: string,
+  raidIndex: number,
   onProgress: (msg: string) => void,
 ): Promise<QeImportData> {
-  const win = getOrCreateQeWindow()
-  const specLabel = SPEC_ID_TO_QE_DROPDOWN[specId] ?? 'Discipline Priest'
-  console.log(`[qe-browser] runQeSim — spec_id=${specId} label="${specLabel}" simc_len=${simcString?.length}`)
-
   const capturePromise = new Promise<string>((resolve, reject) => {
     pendingCapture = resolve
     pendingCaptureReject = reject
@@ -184,10 +215,12 @@ export async function runQeSim(
   const guardTimeout = setTimeout(() => {
     pendingCapture = null
     pendingCaptureReject = null
-  }, 180_000)
+  }, QE_PASS_TIMEOUT_MS)
 
   try {
-    // Always navigate to /live/upgradefinder — skips era selection modal
+    // Always navigate to /live/upgradefinder — skips era selection modal.
+    // Every pass reloads: QE routes to the report page once a run finishes, so
+    // the finder form is gone by the time the next pass starts.
     onProgress('Loading QuestionablyEpic...')
     await win.loadURL(QE_UF_URL)
     await sleep(3000)
@@ -289,9 +322,16 @@ export async function runQeSim(
       await sleep(500)
     }
 
-    // ── Step 5: Click GO ─────────────────────────────────────────────────
-    // HEROIC MAX + MYTHIC MAX are pre-selected by default
-    onProgress('Running simulation...')
+    // ── Step 5: Pick the difficulty toggles ──────────────────────────────
+    // QE defaults to Mythic raid + "+10" and remembers the last pick in
+    // sessionStorage, so every pass sets them explicitly.
+    onProgress(`Selecting ${raidLabel} + M+10...`)
+    const toggleResult = await exec(win, configureTogglesScript(raidLabel, raidIndex))
+    console.log(`[qe-browser] toggles: ${toggleResult}`)
+    await sleep(300)
+
+    // ── Step 6: Click GO ─────────────────────────────────────────────────
+    onProgress(`Running ${raidLabel} simulation...`)
     await sleep(500)
     const goResult = await exec(win, `(() => {
       var btns = Array.from(document.querySelectorAll('button'))
@@ -302,12 +342,15 @@ export async function runQeSim(
     console.log(`[qe-browser] GO: ${goResult}`)
     if (goResult !== 'clicked') throw new Error(`GO button ${goResult}`)
 
-    // ── Step 6: Wait for results via network intercept ───────────────────
-    onProgress('Waiting for results...')
+    // ── Step 7: Wait for results via network intercept ───────────────────
+    onProgress(`Waiting for ${raidLabel} results...`)
     const rawBody = await Promise.race([
       capturePromise,
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('QE sim timed out after 120 s')), 120_000)
+        setTimeout(
+          () => reject(new Error(`QE ${raidLabel} sim timed out after ${QE_PASS_TIMEOUT_MS / 1000} s`)),
+          QE_PASS_TIMEOUT_MS,
+        )
       ),
     ])
 
@@ -318,6 +361,77 @@ export async function runQeSim(
     pendingCapture = null
     pendingCaptureReject = null
     throw err
+  }
+}
+
+/**
+ * Run the QE Upgrade Finder for every requested difficulty.
+ *
+ * QE sims one raid difficulty per report, so this runs one pass per selected
+ * raid difficulty.  Mythic+ rows come back with every pass, so the dungeon
+ * results are kept from the first one; if only Mythic+ difficulties were
+ * selected, a single Mythic pass runs purely for its dungeon rows.
+ */
+export async function runQeSim(
+  simcString: string,
+  specId: number,
+  difficulties: string[],
+  onProgress: (msg: string) => void,
+): Promise<QeImportData> {
+  const win = getOrCreateQeWindow()
+  const specLabel = SPEC_ID_TO_QE_DROPDOWN[specId] ?? 'Discipline Priest'
+
+  const wanted = new Set(difficulties)
+  const raidPasses = Object.keys(QE_RAID_TOGGLE)
+    .filter((d) => wanted.has(d))
+    .map((d) => ({ difficulty: d, index: QE_RAID_TOGGLE[d] }))
+    .sort((a, b) => a.index - b.index)
+
+  // Nothing raid-side selected — still need one pass to get the M+ rows.
+  const passes = raidPasses.length > 0
+    ? raidPasses
+    : [{ difficulty: 'raid-mythic', index: QE_RAID_TOGGLE['raid-mythic'] }]
+
+  console.log(
+    `[qe-browser] runQeSim — spec_id=${specId} label="${specLabel}" ` +
+    `simc_len=${simcString?.length} passes=${passes.map((p) => p.difficulty).join(',')}`
+  )
+
+  let first: QeImportData | null = null
+  const byDifficulty: Record<string, QeGain[]> = {}
+  const urlByDifficulty: Record<string, string> = {}
+  let dungeonTaken = false
+
+  for (let i = 0; i < passes.length; i++) {
+    const pass = passes[i]
+    const raidLabel = QE_RAID_LABELS[pass.index]
+    const step = passes.length > 1 ? ` (${i + 1}/${passes.length})` : ''
+
+    const data = await runQePass(
+      win, simcString, specLabel, raidLabel, pass.index,
+      (msg) => onProgress(msg + step),
+    )
+    if (!first) first = data
+
+    for (const [difficulty, gains] of Object.entries(data.by_difficulty)) {
+      if (!wanted.has(difficulty)) continue
+      // Raid rows: keep only the difficulty this pass was run for.
+      // Dungeon rows: identical on every pass, so keep the first pass's.
+      if (difficulty.startsWith('dungeon-')) {
+        if (dungeonTaken) continue
+      } else if (difficulty !== pass.difficulty) {
+        continue
+      }
+      byDifficulty[difficulty] = gains
+      urlByDifficulty[difficulty] = data.url
+    }
+    dungeonTaken = true
+  }
+
+  return {
+    ...(first as QeImportData),
+    by_difficulty: byDifficulty,
+    url_by_difficulty: urlByDifficulty,
   }
 }
 
