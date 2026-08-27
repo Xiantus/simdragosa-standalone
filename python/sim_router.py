@@ -79,7 +79,7 @@ def is_healer(spec_id: int) -> bool:
 # Backend wrappers
 # ---------------------------------------------------------------------------
 
-def run_qe_sim(simc: str, label: str = "Heroic + Mythic", spec_id: int = 0, timeout_minutes: int = 5) -> SimResult:
+def run_qe_sim(simc: str, label: str = "Mythic", spec_id: int = 0, timeout_minutes: int = 5) -> SimResult:
     """Run a QuestionablyEpic Upgrade Finder simulation.
 
     Playwright is imported lazily here so callers that only run DPS sims are
