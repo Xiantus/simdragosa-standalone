@@ -9,6 +9,7 @@ const DIFF_LUA_KEY: Record<string, string> = {
   'raid-mythic':            'mythic',
   'dungeon-mythic10':       'heroic',   // M+10 drops = Heroic track
   'dungeon-mythic-weekly10':'mythic',   // M+10 Vault = Mythic track
+  'professionMidnightEpic-331': 'crafted',
 }
 
 export function buildLua(rows: TooltipRow[]): string {
@@ -38,7 +39,11 @@ export function buildLua(rows: TooltipRow[]): string {
     const charKey = `${row.char_name}-${row.realm.replace(/\s+/g, '')}`
     if (!byChar[charKey]) byChar[charKey] = {}
     const charItems = byChar[charKey]
-    const sourceType = row.difficulty.startsWith('dungeon-') ? 'dungeon' : 'raid'
+    const sourceType = row.difficulty.startsWith('dungeon-')
+      ? 'dungeon'
+      : row.difficulty.startsWith('profession')
+        ? 'crafted'
+        : 'raid'
     if (!charItems[row.item_id]) {
       charItems[row.item_id] = {
         specs: {}, ilvl: row.ilvl, name: row.item_name ?? null, icon: row.icon ?? null,

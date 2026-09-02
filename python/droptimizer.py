@@ -244,11 +244,33 @@ def fetch_static_data(session: requests.Session) -> StaticData:
         f"{RAIDBOTS_BASE}/static/data/{static_hash}/instances.json", timeout=15
     )
     instances = instances_resp.json()
+
+    # Two small extras only the crafted pool reads: which bonus IDs set an
+    # item's base item level (so the ones it ships with can be stripped before
+    # the crafted track's go on), and which specs can use which weapon type
+    # (crafted gear carries no allowableClasses).  Both degrade gracefully —
+    # payload_builder falls back to pinned values — so a hiccup here must not
+    # take the whole run down.
+    def _optional(name: str, empty):
+        try:
+            resp = session.get(
+                f"{RAIDBOTS_BASE}/static/data/{static_hash}/{name}", timeout=15
+            )
+            return resp.json() if resp.ok else empty
+        except (requests.RequestException, ValueError) as exc:
+            log.warning("Could not fetch %s: %s", name, exc)
+            return empty
+
+    bonus_base_levels = _optional("bonus-id-base-levels.json", {})
+    weapon_specs      = _optional("weapon-specs.json", [])
+
     return StaticData(
         encounter_items=encounter_items,
         instances=instances,
         frontend_version=frontend_version,
         game_data_version=static_hash,
+        bonus_base_levels=bonus_base_levels,
+        weapon_specs=weapon_specs,
     )
 
 
