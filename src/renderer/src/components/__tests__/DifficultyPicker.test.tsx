@@ -11,6 +11,18 @@ describe('DifficultyPicker', () => {
     expect(screen.getByText('M+ 10')).toBeTruthy()
   })
 
+  it('offers the crafted pool alongside the drop difficulties', () => {
+    render(<DifficultyPicker selected={[]} onChange={vi.fn()} />)
+    expect(screen.getByText('Crafted')).toBeTruthy()
+  })
+
+  it('toggles the crafted pool using Raidbots own difficulty id', () => {
+    const onChange = vi.fn()
+    render(<DifficultyPicker selected={[]} onChange={onChange} />)
+    fireEvent.click(screen.getByText('Crafted'))
+    expect(onChange).toHaveBeenCalledWith(['professionMidnightEpic-331'])
+  })
+
   it('highlights selected difficulties', () => {
     render(<DifficultyPicker selected={['raid-heroic']} onChange={vi.fn()} />)
     const heroic = screen.getByText('Heroic').closest('button')!

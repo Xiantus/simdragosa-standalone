@@ -68,6 +68,26 @@ from the Droptimizer page (`"gameDataVersion":"<hash>"`), then read:
 
 The max-level `bonusId` of each group is the one to use — raids sim at 6/6.
 
+### Crafted gear (same block, different rules)
+
+`CRAFTED_DIFFICULTY_MAP` covers the Epic Profession Items pool (`-88`). Crafted
+items have no upgrade track: their item level is the base level of the reagent
+that made them plus a crafting-quality offset, both expressed as bonus IDs.
+
+| File | Gives you |
+|---|---|
+| `/static/data/<hash>/instances.json` | the `professionMidnight*` pools and their profession "encounters" |
+| `/static/data/<hash>/crafting.json` | reagent slots → reagent item IDs (`craftingBonusIds`) |
+| `/static/data/<hash>/bonus-id-base-levels.json` | bonus ID → `baseLevel` |
+| `/static/data/<hash>/weapon-specs.json` | which specs can use which weapon type |
+
+For each reagent, `baseLevel + qualityOffset` is the resulting item level
+(R1 `9623` +0 … R5 `9627` +13), and `[reagentBonusIds…, qualityBonusId]` is
+what goes in the item's bonus list. Cross-check against the Droptimizer
+frontend, which names its crafted difficulties `professionMidnightEpic-<ilvl>`.
+Only the max rank (R5) is simmed, and only the Epic pool — Rare and PVP
+profession gear is never an upgrade for anyone who raids.
+
 ## 2. `python/loot_map.py` — item → source labels
 
 Generated, not hand-edited. After a patch:
@@ -88,7 +108,14 @@ stored results keep their source label.
 - The M+ pool (`-1`) is a *different shape*: it lists each dungeon as one
   encounter whose id is the dungeon's instance id. Do not union its bosses in —
   every item would be simmed twice. `_build_droptimizer_items` guards this.
-- `tests/test_season_config.py` pins the whole wiring. Run it first.
+- Crafted gear carries **no `allowableClasses`** — every profession item is
+  listed for every class. `_usable_by` filters by armour type and, for weapons,
+  by `weapon-specs.json`, or a mage sims plate and warglaives.
+- A crafted item ships with the base-level bonus of its lowest rank (`12214`
+  for Season 2 epics). It has to be stripped before the track's own base-level
+  bonus goes on, or Raidbots resolves two item levels for one item.
+- `tests/test_season_config.py` and `tests/test_crafted_config.py` pin the whole
+  wiring. Run them first.
 
 ## Raidbots API notes
 

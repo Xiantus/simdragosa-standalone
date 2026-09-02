@@ -6,6 +6,8 @@ const DIFFICULTIES = [
   { key: 'raid-mythic',          label: 'Mythic' },
   { key: 'dungeon-mythic10',     label: 'M+ 10' },
   { key: 'dungeon-mythic-weekly10', label: 'M+ 10 Vault' },
+  // Raidbots' own id for the Epic Profession Items pool at Myth Mistcrest (331).
+  { key: 'professionMidnightEpic-331', label: 'Crafted' },
 ]
 
 const ALL_KEYS = DIFFICULTIES.map((d) => d.key)

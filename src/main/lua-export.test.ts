@@ -39,6 +39,16 @@ describe('buildLua', () => {
     expect(lua).toContain('heroic=')
   })
 
+  it('maps the crafted pool to its own key and source type', () => {
+    const lua = buildLua([row({
+      difficulty: 'professionMidnightEpic-331',
+      source: 'Epic Profession Items',
+      dps_gain: 275,
+    })])
+    expect(lua).toContain('crafted=275')
+    expect(lua).toContain('sourceType="crafted"')
+  })
+
   it('maps raid-normal difficulty to champion key', () => {
     const lua = buildLua([row({ difficulty: 'raid-normal', dps_gain: 300 })])
     expect(lua).toContain('champion=')

@@ -25,7 +25,7 @@ from droptimizer import (
     fetch_static_data,
     find_talent_builds,
 )
-from payload_builder import CharacterIdentity, DIFFICULTY_MAP, SimTarget
+from payload_builder import CharacterIdentity, SimTarget, get_difficulty
 from raidbots_session import make_raidbots_session
 from sim_router import diff_label as get_diff_label, is_healer, run_qe_sim, run_raidbots_sim
 from job_state import Job, JobStatus, SimRunnerState
@@ -464,7 +464,7 @@ def _run_one(job: Job, char: dict, raidsid: str, static, user_id: int | None = N
         spec_name = _SPEC_ID_TO_NAME.get(spec_id, "Fire")
         _jlog(jid, f"[{tag}] Spec '{char['spec']}' unrecognised — using '{spec_name}' from spec_id {spec_id}.")
 
-    diff_cfg = DIFFICULTY_MAP.get(job.difficulty, DIFFICULTY_MAP["raid-heroic"])
+    diff_cfg = get_difficulty(job.difficulty)
     identity = CharacterIdentity(
         name=char["name"], realm=char["realm"], region=char["region"],
         spec_label=spec_name, simc_string=simc,
