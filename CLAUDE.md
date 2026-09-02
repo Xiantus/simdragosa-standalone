@@ -114,6 +114,14 @@ stored results keep their source label.
 - A crafted item ships with the base-level bonus of its lowest rank (`12214`
   for Season 2 epics). It has to be stripped before the track's own base-level
   bonus goes on, or Raidbots resolves two item levels for one item.
+- Raidbots drops crafted items the character cannot actually gain from, so a
+  crafted run sims fewer profilesets than we send. Verified on the first live
+  run (40 sent, 20 simmed): every **embellished** item (bonus `8960`, item
+  limit category 512) is dropped when the character already wears 2/2
+  embellishments, and weapons whose main stat is wrong for the spec are
+  dropped too. Both match what raidbots.com itself does — a character at the
+  embellishment cap has to free a slot before crafted embellished gear can be
+  compared.
 - `tests/test_season_config.py` and `tests/test_crafted_config.py` pin the whole
   wiring. Run them first.
 
