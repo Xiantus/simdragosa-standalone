@@ -43,7 +43,9 @@ OUT_PATH = Path(__file__).resolve().parents[1] / "loot_map.py"
 # The catalyst pools are included because Droptimizer sims are submitted with
 # includeConversions, so catalyst conversions show up in raid results; without
 # them those rows fall back to printing a bare instance id.
-DEFAULT_POOLS = [-102, -1, -91, -100, -87]
+# -88 is the Epic Profession Items pool: crafted gear is simmed as its own
+# difficulty, and without it those rows fall back to printing a bare pool id.
+DEFAULT_POOLS = [-102, -1, -91, -100, -87, -88]
 
 
 def fetch_static() -> tuple[list, list]:

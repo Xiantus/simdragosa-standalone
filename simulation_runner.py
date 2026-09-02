@@ -212,12 +212,12 @@ class SimulationRunner:
         ]
 
         def _one(build_label: str, talent_code, difficulty: str) -> dict:
-            from payload_builder import DIFFICULTY_MAP
+            from payload_builder import get_difficulty
             from sim_router import diff_label as get_diff_label
             s        = make_raidbots_session(self._config.raidsid)
             sim_simc = apply_talent(simc_final, talent_code) if talent_code else simc_final
             label    = f"{get_diff_label(difficulty)}{' \u2013 ' + build_label if build_label else ''}"
-            diff_cfg = DIFFICULTY_MAP.get(difficulty, DIFFICULTY_MAP["raid-heroic"])
+            diff_cfg = get_difficulty(difficulty)
             identity = CharacterIdentity(
                 name=info["name"], realm=info["realm"], region=info["region"],
                 spec_label=info["spec"].capitalize(), simc_string=sim_simc,

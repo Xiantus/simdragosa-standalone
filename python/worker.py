@@ -200,7 +200,7 @@ def run_raidbots_job(spec: dict, emit_fn: Callable | None = None) -> int:
     from droptimizer import (
         RAIDBOTS_BASE, apply_talent, fetch_character, fetch_static_data,
     )
-    from payload_builder import CharacterIdentity, SimTarget, DIFFICULTY_MAP, build_payload
+    from payload_builder import CharacterIdentity, SimTarget, get_difficulty, build_payload
     from raidbots_session import make_raidbots_session
     from sim_router import run_raidbots_sim
 
@@ -226,7 +226,7 @@ def run_raidbots_job(spec: dict, emit_fn: Callable | None = None) -> int:
         character_data = fetch_character(session, simc)
         static = fetch_static_data(session)
 
-        diff_cfg = DIFFICULTY_MAP.get(difficulty, DIFFICULTY_MAP["raid-heroic"])
+        diff_cfg = get_difficulty(difficulty)
 
         # Auto-detect spec from the simc_string so the payload class/spec always
         # matches, even when the character was registered with the wrong spec_id.

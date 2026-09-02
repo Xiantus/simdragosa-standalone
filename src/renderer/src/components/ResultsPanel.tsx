@@ -10,6 +10,7 @@ const DIFF_LABELS: Record<string, string> = {
   'raid-mythic':            'Mythic',
   'dungeon-mythic10':       'M+10',
   'dungeon-mythic-weekly10': 'M+10 Vault',
+  'professionMidnightEpic-331': 'Crafted',
 }
 
 const DIFF_ORDER = [
@@ -18,6 +19,7 @@ const DIFF_ORDER = [
   'raid-mythic',
   'dungeon-mythic10',
   'dungeon-mythic-weekly10',
+  'professionMidnightEpic-331',
 ]
 
 function diffRank(diff: string): number {

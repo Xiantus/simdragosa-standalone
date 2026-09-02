@@ -351,11 +351,17 @@ function registerIpcHandlers(): void {
         if (HEALER_SPEC_IDS.has(char.spec_id)) {
           // One QE job per healer character — it runs a pass per selected raid
           // difficulty internally and picks up the M+ rows along the way.
+          //
+          // Crafted gear is a Raidbots-only pool: QE reports it, but we do not
+          // read those rows yet, so a crafted-only selection has nothing to run
+          // and must not fall back to a Mythic pass the user did not ask for.
+          const qeDifficulties = selection.difficulties.filter((d) => !d.startsWith('profession'))
+          if (qeDifficulties.length === 0) continue
           if (!healersSeen.has(charId)) {
             healersSeen.add(charId)
             const qeJobId = `qe-${charId}-${Date.now()}`
             queued.push({ job_id: qeJobId, char_id: charId, char_name: char.name, spec: char.spec, difficulty: 'all', build_label: 'QE Auto' })
-            if (mainWindow) runQeJob(qeJobId, char, selection.difficulties, mainWindow)
+            if (mainWindow) runQeJob(qeJobId, char, qeDifficulties, mainWindow)
           }
           continue
         }
