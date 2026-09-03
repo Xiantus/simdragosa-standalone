@@ -90,6 +90,16 @@ describe('characters', () => {
 })
 
 describe('tooltip_data', () => {
+  test('a fresh schema can store the crafted stat combination', () => {
+    upsertTooltipRows(db, [{
+      item_id: 239653, char_name: 'Xiage', realm: 'draenor', spec: 'Arcane',
+      difficulty: 'professionMidnightEpic-331', dps_gain: 2833.4, ilvl: 331,
+      item_name: "Martyr's Gloves", sim_date: '2026-09-03',
+      source: 'Epic Profession Items', icon: null, stats: 'crit/mastery',
+    }])
+    expect(getAllTooltipData(db)[0].stats).toBe('crit/mastery')
+  })
+
   test('getAllTooltipData returns empty array on fresh database', () => {
     expect(getAllTooltipData(db)).toEqual([])
   })
