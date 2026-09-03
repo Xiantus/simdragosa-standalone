@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from itertools import combinations
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -163,6 +164,16 @@ CRAFTED_FALLBACK_BASE_LEVEL_BONUS_IDS: frozenset[int] = frozenset({12214, 12249}
 # Stat IDs Blizzard uses as crafted-stat placeholders (STAT_CRAFT_MOD_1/2).  An
 # item with none of these has fixed secondaries, so craftedStats does nothing.
 CRAFTED_STAT_PLACEHOLDER_IDS: frozenset[int] = frozenset({24, 25})
+
+# The secondary stats a crafted item's stat slots can be filled with, in the
+# order Raidbots lists them.  Every combination is simmed, so the report says
+# which pairing is actually best rather than assuming the one on the character.
+CRAFTED_SECONDARY_STATS: tuple[tuple[int, str], ...] = (
+    (32, "crit"),
+    (36, "haste"),
+    (49, "mastery"),
+    (40, "vers"),
+)
 
 # Class ID -> the armour subclass that class wears (1 cloth, 2 leather,
 # 3 mail, 4 plate).  Only crafted gear needs this; drop loot carries
@@ -577,6 +588,32 @@ def _crafted_stat_slots(item: dict) -> int:
     )
 
 
+def crafted_stat_combos(slots: int) -> list[dict[str, Any]]:
+    """Return every stat choice a crafted item with *slots* stat slots can take.
+
+    Mirrors Raidbots' own table: one slot is any single secondary, two slots are
+    any unordered pair of two different ones.  ``id`` is what the payload's
+    ``crafted_stats`` field takes (stat IDs, doubled for a single slot, which is
+    the shape Raidbots uses); ``value`` is the readable form that goes in the
+    profileset name so each combination can be told apart in the report.
+    """
+    if slots == 1:
+        return [
+            {"id": f"{sid}/{sid}", "value": name, "stats": [sid]}
+            for sid, name in CRAFTED_SECONDARY_STATS
+        ]
+    if slots >= 2:
+        return [
+            {
+                "id":    f"{first[0]}/{second[0]}",
+                "value": f"{first[1]},{second[1]}",
+                "stats": [first[0], second[0]],
+            }
+            for first, second in combinations(CRAFTED_SECONDARY_STATS, 2)
+        ]
+    return []
+
+
 def _strip_level_bonuses(bonus_lists: list, bonus_base_levels: dict) -> list:
     """Drop the bonus IDs that set a crafted item's own base item level.
 
@@ -605,7 +642,6 @@ def _build_crafted_items(
     spec_id:           int,
     equipped:          dict,
     crafted_info:      dict,
-    crafted_stats:     str,
     bonus_base_levels: dict,
     weapon_specs:      list,
 ) -> list:
@@ -671,60 +707,105 @@ def _build_crafted_items(
 
         enchant_id  = _enchant_for_slot(equipped, slot)
         encounter_obj = enc_by_id.get(enc_id, {"id": enc_id})
-        # Items with fixed secondaries have no crafted-stat placeholder, so a
-        # stat choice would be meaningless on them.
-        item_crafted_stats = crafted_stats if _crafted_stat_slots(item) else None
 
-        entry = {
-            "id": (
-                f"{pool_id}/{enc_id}/{difficulty}/{item['id']}/"
-                f"{item_level}/{enchant_id}/{slot}///"
-            ),
-            "slot": slot,
-            "item": {
-                **{k: v for k, v in item.items() if k != "sources"},
-                "bonusLists":       bonus_lists,
-                "bonus_id":         "/".join(str(b) for b in bonus_lists),
-                "enchant_id":       enchant_id,
-                "gem_id":           "",
-                "itemLevel":        item_level,
-                "quality":          quality,
-                "crafted_stats":    item_crafted_stats,
-                "crafting_quality": crafting_rank,
-                "instanceId":       pool_id,
-                "encounterId":      enc_id,
-                "difficulty":       difficulty,
-                "offSpecItem":      False,
-                "instance":         instance_data,
-                "encounter":        encounter_obj,
-                "overrides": {
-                    "encounterId":             enc_id,
-                    "encounterSequenceOffset": enc_order.get(enc_id, 0),
-                    "instanceId":              pool_id,
-                    "difficulty":              difficulty,
-                    "itemLevelOverride":       item_level,
-                    "craftingQuality":         crafting_rank,
-                    "quality":                 quality,
-                    "season":                  SEASON_SHORT_NAME,
-                    "seasonId":                SEASON_ID,
-                    "bonusIds":                track_bonus_ids,
-                    "enableSockets":           True,
-                    "instance":                instance_data,
-                    "encounter":               encounter_obj,
-                    "encounterType":           "profession",
-                    "encounterTypePlural":     "professions",
-                },
-                "socketInfo":    socket_info,
-                "tooltipParams": {"enchant": enchant_id},
-            },
-        }
-        result.append(entry)
+        # A crafted item's secondaries are chosen at craft time, so the choice
+        # is part of what is being simmed: one profileset per combination the
+        # item's stat slots allow (Raidbots' own expandCraftedStats mode).
+        # Items with fixed secondaries have no placeholder and sim once.
+        combos = crafted_stat_combos(_crafted_stat_slots(item))
+        for combo in combos or [None]:
+            entry = _crafted_entry(
+                item=item, combo=combo, slot=slot, pool_id=pool_id, enc_id=enc_id,
+                difficulty=difficulty, item_level=item_level, quality=quality,
+                crafting_rank=crafting_rank, bonus_lists=bonus_lists,
+                track_bonus_ids=track_bonus_ids, enchant_id=enchant_id,
+                socket_info=socket_info, instance_data=instance_data,
+                encounter_obj=encounter_obj,
+                sequence_offset=enc_order.get(enc_id, 0),
+            )
+            result.append(entry)
 
     log.info(
         "Built %d crafted droptimizerItems for %s at ilvl %s",
         len(result), difficulty, item_level,
     )
     return result
+
+
+def _crafted_entry(
+    *,
+    item:            dict,
+    combo:           dict | None,
+    slot:            str,
+    pool_id:         int,
+    enc_id:          int,
+    difficulty:      str,
+    item_level:      int,
+    quality:         int,
+    crafting_rank:   int,
+    bonus_lists:     list,
+    track_bonus_ids: list,
+    enchant_id:      int,
+    socket_info:     dict,
+    instance_data:   dict,
+    encounter_obj:   dict,
+    sequence_offset: int,
+) -> dict:
+    """Build one droptimizerItems entry for a crafted item and stat choice.
+
+    ``id`` follows Raidbots' own layout so the profileset names in the report
+    stay parseable and, crucially, unique per stat combination::
+
+        instance/encounter/difficulty/item/ilvl/enchant/slot/
+            bonusVariation/statCombo/variation/redirectedBaseStats
+    """
+    combo_value = combo["value"] if combo else ""
+
+    return {
+        "id": (
+            f"{pool_id}/{enc_id}/{difficulty}/{item['id']}/"
+            f"{item_level}/{enchant_id}/{slot}//{combo_value}//"
+        ),
+        "slot": slot,
+        "item": {
+            **{k: v for k, v in item.items() if k != "sources"},
+            "bonusLists":       bonus_lists,
+            "bonus_id":         "/".join(str(b) for b in bonus_lists),
+            "enchant_id":       enchant_id,
+            "gem_id":           "",
+            "itemLevel":        item_level,
+            "quality":          quality,
+            "crafted_stats":    combo["id"] if combo else None,
+            "statCombo":        combo,
+            "crafting_quality": crafting_rank,
+            "instanceId":       pool_id,
+            "encounterId":      enc_id,
+            "difficulty":       difficulty,
+            "offSpecItem":      False,
+            "instance":         instance_data,
+            "encounter":        encounter_obj,
+            "overrides": {
+                "encounterId":             enc_id,
+                "encounterSequenceOffset": sequence_offset,
+                "instanceId":              pool_id,
+                "difficulty":              difficulty,
+                "itemLevelOverride":       item_level,
+                "craftingQuality":         crafting_rank,
+                "quality":                 quality,
+                "season":                  SEASON_SHORT_NAME,
+                "seasonId":                SEASON_ID,
+                "bonusIds":                track_bonus_ids,
+                "enableSockets":           True,
+                "expandCraftedStats":      True,
+                "instance":                instance_data,
+                "encounter":               encounter_obj,
+                "encounterType":           "profession",
+                "encounterTypePlural":     "professions",
+            },
+            "socketInfo":    socket_info,
+            "tooltipParams": {"enchant": enchant_id},
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -788,8 +869,7 @@ def build_payload(
         droptimizer_items = _build_crafted_items(
             static.encounter_items, instance_data, target.difficulty,
             class_id, target.loot_spec_id or target.spec_id, equipped,
-            upgrade_info, target.crafted_stats,
-            static.bonus_base_levels, static.weapon_specs,
+            upgrade_info, static.bonus_base_levels, static.weapon_specs,
         )
         report_name = (
             f"Droptimizer \u2022 {SEASON_LABEL} Crafted \u2022 "

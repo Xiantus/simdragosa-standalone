@@ -205,15 +205,59 @@ def test_items_are_levelled_by_the_crafted_bonus_ids():
         assert 12214 not in item["bonusLists"]
 
 
-def test_crafted_stats_only_go_on_items_that_have_the_slots():
-    by_name = {e["item"]["name"]: e["item"] for e in _build()["droptimizerItems"]}
-    assert by_name["Spellbreaker's Shelter"]["crafted_stats"] == "36/49"
-    assert by_name["Coiled Choker"]["crafted_stats"] is None
+def test_stat_combos_cover_every_choice_a_crafter_has():
+    singles = pb.crafted_stat_combos(1)
+    pairs   = pb.crafted_stat_combos(2)
+    assert [c["value"] for c in singles] == ["crit", "haste", "mastery", "vers"]
+    assert len(pairs) == 6
+    assert {c["value"] for c in pairs} == {
+        "crit,haste", "crit,mastery", "crit,vers",
+        "haste,mastery", "haste,vers", "mastery,vers",
+    }
+    # ``id`` is what the payload sends: stat IDs, doubled for a single slot.
+    assert singles[0]["id"] == "32/32"
+    assert dict(zip((c["value"] for c in pairs), (c["id"] for c in pairs)))["haste,mastery"] == "36/49"
+    # Items with fixed secondaries have nothing to choose.
+    assert pb.crafted_stat_combos(0) == []
 
 
-def test_each_item_is_simmed_once():
+def test_every_stat_combination_is_simmed_for_a_two_slot_item():
+    entries = [
+        e for e in _build()["droptimizerItems"]
+        if e["item"]["name"] == "Spellbreaker's Shelter"
+    ]
+    assert len(entries) == 6
+    assert {e["item"]["crafted_stats"] for e in entries} == {
+        "32/36", "32/49", "32/40", "36/49", "36/40", "49/40",
+    }
+
+
+def test_items_without_stat_slots_are_simmed_once():
+    entries = [
+        e for e in _build()["droptimizerItems"]
+        if e["item"]["name"] == "Coiled Choker"
+    ]
+    assert len(entries) == 1
+    assert entries[0]["item"]["crafted_stats"] is None
+
+
+def test_each_profileset_name_is_unique():
+    """Same item, different stats — the names have to differ or results collide."""
     items = _build()["droptimizerItems"]
-    assert len({e["item"]["id"] for e in items}) == len(items)
+    assert len({e["id"] for e in items}) == len(items)
+
+
+def test_stat_combination_travels_in_the_profileset_name():
+    """Field 9 is where Raidbots puts it, and where worker.py reads it back."""
+    import worker
+    for entry in _build()["droptimizerItems"]:
+        parts = entry["id"].split("/")
+        combo = entry["item"]["statCombo"]
+        if combo is None:
+            assert worker._stat_combo_label(parts) is None
+        else:
+            assert parts[8] == combo["value"]
+            assert worker._stat_combo_label(parts) == combo["value"].replace(",", "/")
 
 
 def test_item_ids_stay_parseable_by_the_report_reader():
@@ -232,3 +276,37 @@ def test_enchants_carry_over_from_the_equipped_slot():
 def test_report_name_says_what_was_simmed():
     name = _build()["reportName"]
     assert "Crafted" in name and "331" in name and "R5" in name
+
+
+# ---------------------------------------------------------------------------
+# Reading the crafted result back
+# ---------------------------------------------------------------------------
+
+def _report(rows):
+    return {
+        "sim": {
+            "players": [{"collected_data": {"dps": {"mean": 100000.0}}}],
+            "profilesets": {"results": rows},
+        }
+    }
+
+
+def test_best_stat_combination_wins_and_is_reported():
+    import worker
+    name = "-88/-39/professionMidnightEpic-331/910001/331/0/chest//{combo}//"
+    gains = worker._parse_tooltip_data(_report([
+        {"name": name.format(combo="haste,mastery"), "mean": 101500.0},
+        {"name": name.format(combo="crit,mastery"),  "mean": 102400.0},
+        {"name": name.format(combo="crit,vers"),     "mean": 100900.0},
+    ]))
+    assert len(gains) == 1
+    assert gains[0]["dps_gain"] == 2400.0
+    assert gains[0]["stats"] == "crit/mastery"
+
+
+def test_drop_loot_rows_have_no_stat_combination():
+    import worker
+    gains = worker._parse_tooltip_data(_report([
+        {"name": "1320/2871/raid-heroic/900001/321/0/head////", "mean": 101000.0},
+    ]))
+    assert gains[0]["stats"] is None

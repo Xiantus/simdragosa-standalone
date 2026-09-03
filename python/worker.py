@@ -142,8 +142,27 @@ def _parse_simc_spec(simc_string: str) -> tuple[str, int]:
     return "Unknown", 0
 
 
+def _stat_combo_label(parts: list[str]) -> str | None:
+    """Return the readable crafted stat combination in a profileset name.
+
+    Raidbots' profileset names carry the stat combination in the ninth field
+    (``…/slot/bonusVariation/statCombo/…``), which crafted sims fill in because
+    every stat combination an item can be crafted with is simmed separately.
+    Everything else leaves it empty.
+    """
+    if len(parts) < 9:
+        return None
+    combo = parts[8].strip()
+    return combo.replace(",", "/") if combo else None
+
+
 def _parse_tooltip_data(report_json: dict) -> list[dict]:
-    """Extract item upgrade entries from a Raidbots Droptimizer report JSON."""
+    """Extract item upgrade entries from a Raidbots Droptimizer report JSON.
+
+    Only the best row per item survives.  With crafted sims that means the best
+    stat combination for the item, which is reported alongside the gain so the
+    result says what to actually ask the crafter for.
+    """
     try:
         players = report_json.get("sim", {}).get("players", [])
         if not players:
@@ -184,6 +203,7 @@ def _parse_tooltip_data(report_json: dict) -> list[dict]:
                     "ilvl": ilvl,
                     "item_name": None,
                     "zone_name": zone_name,
+                    "stats": _stat_combo_label(parts),
                 }
         return list(best.values())
     except Exception as exc:

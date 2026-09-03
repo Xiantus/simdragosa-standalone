@@ -114,6 +114,10 @@ function DpsGainBars({ gains, wide = false, metricLabel = 'dps' }: {
               {g.ilvl != null && (
                 <span style={{ color: 'var(--sub)', marginLeft: 4 }}>({g.ilvl})</span>
               )}
+              {/* Crafted runs sim every stat combination — say which one won. */}
+              {g.stats && (
+                <span style={{ color: 'var(--accent)', marginLeft: 4 }}>{g.stats}</span>
+              )}
             </div>
             <div style={{
               flex: 1,
