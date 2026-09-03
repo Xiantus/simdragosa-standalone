@@ -588,30 +588,26 @@ def _crafted_stat_slots(item: dict) -> int:
     )
 
 
-def crafted_stat_combos(slots: int) -> list[dict[str, Any]]:
-    """Return every stat choice a crafted item with *slots* stat slots can take.
+def crafted_stat_combos() -> list[dict[str, Any]]:
+    """Return every secondary-stat pairing a crafted item can be made with.
 
-    Mirrors Raidbots' own table: one slot is any single secondary, two slots are
-    any unordered pair of two different ones.  ``id`` is what the payload's
-    ``crafted_stats`` field takes (stat IDs, doubled for a single slot, which is
-    the shape Raidbots uses); ``value`` is the readable form that goes in the
-    profileset name so each combination can be told apart in the report.
+    Which stats a crafted item gets is decided at craft time and applies to the
+    whole sim, not to one item: Raidbots takes it as ``droptimizer.craftedStats``
+    and builds the profilesets itself, ignoring anything per-item we send.  So
+    covering every possibility means one sim per pairing — see
+    ``worker.run_raidbots_job`` — and this is the list to sweep.
+
+    ``id`` is what the payload field takes (stat IDs, in Raidbots' own order);
+    ``label`` is what the result is reported under.
     """
-    if slots == 1:
-        return [
-            {"id": f"{sid}/{sid}", "value": name, "stats": [sid]}
-            for sid, name in CRAFTED_SECONDARY_STATS
-        ]
-    if slots >= 2:
-        return [
-            {
-                "id":    f"{first[0]}/{second[0]}",
-                "value": f"{first[1]},{second[1]}",
-                "stats": [first[0], second[0]],
-            }
-            for first, second in combinations(CRAFTED_SECONDARY_STATS, 2)
-        ]
-    return []
+    return [
+        {
+            "id":     f"{first[0]}/{second[0]}",
+            "label":  f"{first[1]}/{second[1]}",
+            "stats":  [first[0], second[0]],
+        }
+        for first, second in combinations(CRAFTED_SECONDARY_STATS, 2)
+    ]
 
 
 def _strip_level_bonuses(bonus_lists: list, bonus_base_levels: dict) -> list:
@@ -642,6 +638,7 @@ def _build_crafted_items(
     spec_id:           int,
     equipped:          dict,
     crafted_info:      dict,
+    crafted_stats:     str,
     bonus_base_levels: dict,
     weapon_specs:      list,
 ) -> list:
@@ -708,22 +705,19 @@ def _build_crafted_items(
         enchant_id  = _enchant_for_slot(equipped, slot)
         encounter_obj = enc_by_id.get(enc_id, {"id": enc_id})
 
-        # A crafted item's secondaries are chosen at craft time, so the choice
-        # is part of what is being simmed: one profileset per combination the
-        # item's stat slots allow (Raidbots' own expandCraftedStats mode).
-        # Items with fixed secondaries have no placeholder and sim once.
-        combos = crafted_stat_combos(_crafted_stat_slots(item))
-        for combo in combos or [None]:
-            entry = _crafted_entry(
-                item=item, combo=combo, slot=slot, pool_id=pool_id, enc_id=enc_id,
-                difficulty=difficulty, item_level=item_level, quality=quality,
-                crafting_rank=crafting_rank, bonus_lists=bonus_lists,
-                track_bonus_ids=track_bonus_ids, enchant_id=enchant_id,
-                socket_info=socket_info, instance_data=instance_data,
-                encounter_obj=encounter_obj,
-                sequence_offset=enc_order.get(enc_id, 0),
-            )
-            result.append(entry)
+        # Items with fixed secondaries have no crafted-stat placeholder, so the
+        # run's stat choice would be meaningless on them.
+        item_stats = crafted_stats if _crafted_stat_slots(item) else None
+
+        result.append(_crafted_entry(
+            item=item, crafted_stats=item_stats, slot=slot, pool_id=pool_id,
+            enc_id=enc_id, difficulty=difficulty, item_level=item_level,
+            quality=quality, crafting_rank=crafting_rank, bonus_lists=bonus_lists,
+            track_bonus_ids=track_bonus_ids, enchant_id=enchant_id,
+            socket_info=socket_info, instance_data=instance_data,
+            encounter_obj=encounter_obj,
+            sequence_offset=enc_order.get(enc_id, 0),
+        ))
 
     log.info(
         "Built %d crafted droptimizerItems for %s at ilvl %s",
@@ -735,7 +729,7 @@ def _build_crafted_items(
 def _crafted_entry(
     *,
     item:            dict,
-    combo:           dict | None,
+    crafted_stats:   str | None,
     slot:            str,
     pool_id:         int,
     enc_id:          int,
@@ -751,20 +745,18 @@ def _crafted_entry(
     encounter_obj:   dict,
     sequence_offset: int,
 ) -> dict:
-    """Build one droptimizerItems entry for a crafted item and stat choice.
+    """Build one droptimizerItems entry for a crafted item.
 
     ``id`` follows Raidbots' own layout so the profileset names in the report
-    stay parseable and, crucially, unique per stat combination::
+    stay parseable::
 
         instance/encounter/difficulty/item/ilvl/enchant/slot/
             bonusVariation/statCombo/variation/redirectedBaseStats
     """
-    combo_value = combo["value"] if combo else ""
-
     return {
         "id": (
             f"{pool_id}/{enc_id}/{difficulty}/{item['id']}/"
-            f"{item_level}/{enchant_id}/{slot}//{combo_value}//"
+            f"{item_level}/{enchant_id}/{slot}///"
         ),
         "slot": slot,
         "item": {
@@ -775,8 +767,7 @@ def _crafted_entry(
             "gem_id":           "",
             "itemLevel":        item_level,
             "quality":          quality,
-            "crafted_stats":    combo["id"] if combo else None,
-            "statCombo":        combo,
+            "crafted_stats":    crafted_stats,
             "crafting_quality": crafting_rank,
             "instanceId":       pool_id,
             "encounterId":      enc_id,
@@ -796,7 +787,6 @@ def _crafted_entry(
                 "seasonId":                SEASON_ID,
                 "bonusIds":                track_bonus_ids,
                 "enableSockets":           True,
-                "expandCraftedStats":      True,
                 "instance":                instance_data,
                 "encounter":               encounter_obj,
                 "encounterType":           "profession",
@@ -869,7 +859,8 @@ def build_payload(
         droptimizer_items = _build_crafted_items(
             static.encounter_items, instance_data, target.difficulty,
             class_id, target.loot_spec_id or target.spec_id, equipped,
-            upgrade_info, static.bonus_base_levels, static.weapon_specs,
+            upgrade_info, target.crafted_stats,
+            static.bonus_base_levels, static.weapon_specs,
         )
         report_name = (
             f"Droptimizer \u2022 {SEASON_LABEL} Crafted \u2022 "

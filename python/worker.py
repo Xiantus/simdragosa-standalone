@@ -24,6 +24,7 @@ import io
 import json
 import logging
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
@@ -142,26 +143,12 @@ def _parse_simc_spec(simc_string: str) -> tuple[str, int]:
     return "Unknown", 0
 
 
-def _stat_combo_label(parts: list[str]) -> str | None:
-    """Return the readable crafted stat combination in a profileset name.
-
-    Raidbots' profileset names carry the stat combination in the ninth field
-    (``…/slot/bonusVariation/statCombo/…``), which crafted sims fill in because
-    every stat combination an item can be crafted with is simmed separately.
-    Everything else leaves it empty.
-    """
-    if len(parts) < 9:
-        return None
-    combo = parts[8].strip()
-    return combo.replace(",", "/") if combo else None
-
-
 def _parse_tooltip_data(report_json: dict) -> list[dict]:
     """Extract item upgrade entries from a Raidbots Droptimizer report JSON.
 
-    Only the best row per item survives.  With crafted sims that means the best
-    stat combination for the item, which is reported alongside the gain so the
-    result says what to actually ask the crafter for.
+    One row per item — the best of that item's profilesets.  ``stats`` is left
+    empty here; a crafted run fills it in per report, since the stat pairing is
+    a property of the whole sim rather than of a row (see run_raidbots_job).
     """
     try:
         players = report_json.get("sim", {}).get("players", [])
@@ -203,7 +190,7 @@ def _parse_tooltip_data(report_json: dict) -> list[dict]:
                     "ilvl": ilvl,
                     "item_name": None,
                     "zone_name": zone_name,
-                    "stats": _stat_combo_label(parts),
+                    "stats": None,
                 }
         return list(best.values())
     except Exception as exc:
@@ -220,7 +207,9 @@ def run_raidbots_job(spec: dict, emit_fn: Callable | None = None) -> int:
     from droptimizer import (
         RAIDBOTS_BASE, apply_talent, fetch_character, fetch_static_data,
     )
-    from payload_builder import CharacterIdentity, SimTarget, get_difficulty, build_payload
+    from payload_builder import (
+        CharacterIdentity, SimTarget, crafted_stat_combos, get_difficulty, is_crafted,
+    )
     from raidbots_session import make_raidbots_session
     from sim_router import run_raidbots_sim
 
@@ -280,37 +269,80 @@ def run_raidbots_job(spec: dict, emit_fn: Callable | None = None) -> int:
             crafted_stats=char.get("crafted_stats", "36/49"),
         )
 
-        _emit({"type": "progress", "status": "submitting"}, emit_fn)
+        def _fetch_gains(url: str) -> list[dict]:
+            """Read a finished report and parse its item gains."""
+            sim_id = url.rstrip("/").split("/")[-1]
+            try:
+                resp = session.get(
+                    f"{RAIDBOTS_BASE}/simbot/report/{sim_id}/data.json", timeout=30
+                )
+                if resp.ok:
+                    return _parse_tooltip_data(resp.json())
+            except Exception as exc:
+                log.warning("Could not fetch/parse report data: %s", exc)
+            return []
 
-        submitted_sim_id: list[str] = []
+        def _run(sim_target, label: str = ""):
+            def _on_submitted(sim_id: str) -> None:
+                _emit(
+                    {"type": "progress", "status": "running", "sim_id": sim_id,
+                     **({"log_line": label} if label else {})},
+                    emit_fn,
+                )
 
-        def _on_submitted(sim_id: str) -> None:
-            submitted_sim_id.append(sim_id)
-            _emit({"type": "progress", "status": "running", "sim_id": sim_id}, emit_fn)
+            _emit(
+                {"type": "progress", "status": "submitting",
+                 **({"log_line": label} if label else {})},
+                emit_fn,
+            )
+            return run_raidbots_sim(
+                session, identity, sim_target, character_data, static,
+                timeout_minutes=timeout_minutes,
+                on_submitted=_on_submitted,
+            )
 
-        result = run_raidbots_sim(
-            session, identity, target, character_data, static,
-            timeout_minutes=timeout_minutes,
-            on_submitted=_on_submitted,
-        )
+        # Which secondaries a crafted item is made with is a sim-wide option —
+        # Raidbots builds the profilesets from droptimizer.craftedStats and
+        # ignores anything per-item — so covering every choice means one sim per
+        # pairing.  The best result per item wins, and carries the pairing that
+        # produced it.
+        if is_crafted(difficulty):
+            combos = crafted_stat_combos()
+            best: dict[int, dict] = {}
+            best_url = ""
+            best_total = None
+            for index, combo in enumerate(combos, start=1):
+                label = f"Crafted stats {combo['label']} ({index}/{len(combos)})"
+                result = _run(
+                    replace(target, crafted_stats=combo["id"]), label,
+                )
+                if not result.ok:
+                    _emit({"type": "error",
+                           "message": result.error or f"{combo['label']} sim failed or timed out"},
+                          emit_fn)
+                    return 1
+                gains = _fetch_gains(result.url)
+                for gain in gains:
+                    gain["stats"] = combo["label"]
+                    current = best.get(gain["item_id"])
+                    if current is None or gain["dps_gain"] > current["dps_gain"]:
+                        best[gain["item_id"]] = gain
+                total = sum(g["dps_gain"] for g in gains)
+                if best_total is None or total > best_total:
+                    best_total, best_url = total, result.url
+
+            _emit({"type": "done", "url": best_url,
+                   "dps_gains": list(best.values())}, emit_fn)
+            return 0
+
+        result = _run(target)
 
         if not result.ok:
             _emit({"type": "error", "message": result.error or "Sim failed or timed out"}, emit_fn)
             return 1
 
-        # Fetch report data and parse DPS gains
-        sim_id = result.url.rstrip("/").split("/")[-1]
-        dps_gains: list[dict] = []
-        try:
-            import requests as _requests
-            data_url = f"{RAIDBOTS_BASE}/simbot/report/{sim_id}/data.json"
-            resp = session.get(data_url, timeout=30)
-            if resp.ok:
-                dps_gains = _parse_tooltip_data(resp.json())
-        except Exception as exc:
-            log.warning("Could not fetch/parse report data: %s", exc)
-
-        _emit({"type": "done", "url": result.url, "dps_gains": dps_gains}, emit_fn)
+        _emit({"type": "done", "url": result.url,
+               "dps_gains": _fetch_gains(result.url)}, emit_fn)
         return 0
 
     except Exception as exc:
