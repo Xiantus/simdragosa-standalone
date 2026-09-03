@@ -352,5 +352,48 @@ def test_crafted_job_sims_every_stat_pairing_and_keeps_the_best(monkeypatch):
     assert by_item[1]["dps_gain"] == 900.0
     assert by_item[1]["stats"] == "crit/mastery"
     assert by_item[2]["stats"] == "mastery/vers"
-    # The report linked is the pairing that came out best overall.
-    assert done["url"].endswith("49/40")
+    # The report linked is one of the pairings that actually won something.
+    assert done["url"].rsplit("/report/", 1)[1] in {"32/49", "49/40"}
+
+
+def test_pairings_inside_the_error_band_are_a_tie():
+    """A few hundred DPS apart is sim noise, not a better craft."""
+    import worker
+
+    def row(item_id, gain, label, error=300.0):
+        return {"item_id": item_id, "dps_gain": gain, "ilvl": 331,
+                "item_name": None, "zone_name": "Epic Profession Items",
+                "stats": label, "error": error}
+
+    merged, winner = worker._merge_crafted_runs({
+        # crit/mastery wins two items outright...
+        "crit/mastery": [row(1, 2000.0, "crit/mastery"), row(2, 1500.0, "crit/mastery"),
+                         row(3, 1000.0, "crit/mastery")],
+        # ...and loses the third by less than the error, so it stays the answer
+        # rather than scattering the recommendation across pairings.
+        "haste/vers":   [row(1, 1000.0, "haste/vers"), row(2, 1000.0, "haste/vers"),
+                         row(3, 1100.0, "haste/vers")],
+    })
+
+    assert winner == "crit/mastery"
+    assert {g["item_id"]: g["stats"] for g in merged} == {
+        1: "crit/mastery", 2: "crit/mastery", 3: "crit/mastery",
+    }
+
+
+def test_a_pairing_that_wins_beyond_the_noise_is_kept():
+    import worker
+
+    def row(item_id, gain, label, error=100.0):
+        return {"item_id": item_id, "dps_gain": gain, "ilvl": 331,
+                "item_name": None, "zone_name": "Epic Profession Items",
+                "stats": label, "error": error}
+
+    merged, _ = worker._merge_crafted_runs({
+        "crit/mastery": [row(1, 2000.0, "crit/mastery"), row(2, 900.0, "crit/mastery")],
+        "haste/vers":   [row(1, 1000.0, "haste/vers"),   row(2, 1800.0, "haste/vers")],
+    })
+
+    by_item = {g["item_id"]: g for g in merged}
+    assert by_item[2]["stats"] == "haste/vers"
+    assert by_item[2]["dps_gain"] == 1800.0

@@ -191,11 +191,53 @@ def _parse_tooltip_data(report_json: dict) -> list[dict]:
                     "item_name": None,
                     "zone_name": zone_name,
                     "stats": None,
+                    # Sim noise on this row.  Two stat pairings closer together
+                    # than this are a tie, not a winner and a loser.
+                    "error": round(row.get("mean_error") or 0.0, 1),
                 }
         return list(best.values())
     except Exception as exc:
         log.warning("tooltip parse error: %s", exc)
         return []
+
+
+def _merge_crafted_runs(by_combo: dict[str, list[dict]]) -> tuple[list[dict], str]:
+    """Merge one crafted run per stat pairing into one result per item.
+
+    Taking the raw maximum per item scatters the answer across pairings that
+    the sim cannot actually tell apart — a Droptimizer row carries a few hundred
+    DPS of error, and several pairings usually land inside it.  So each item
+    keeps every pairing within its own error band as a tie, and the tie is
+    broken by the pairing that wins the most items outright.  The result reads
+    as one recommendation ("craft crit/mastery") instead of six.
+
+    Returns the merged rows and the pairing that won the most items, whose
+    report is the one worth linking.
+    """
+    # Item -> pairing -> row.
+    per_item: dict[int, dict[str, dict]] = {}
+    for label, gains in by_combo.items():
+        for gain in gains:
+            per_item.setdefault(gain["item_id"], {})[label] = gain
+
+    outright: dict[str, int] = {label: 0 for label in by_combo}
+    for rows in per_item.values():
+        best = max(rows.values(), key=lambda g: g["dps_gain"])
+        outright[best["stats"]] = outright.get(best["stats"], 0) + 1
+
+    def preference(label: str) -> int:
+        return outright.get(label, 0)
+
+    merged: list[dict] = []
+    for rows in per_item.values():
+        best = max(rows.values(), key=lambda g: g["dps_gain"])
+        band = best.get("error") or 0.0
+        tied = [g for g in rows.values() if best["dps_gain"] - g["dps_gain"] <= band]
+        merged.append(max(tied, key=lambda g: (preference(g["stats"]), g["dps_gain"])))
+
+    merged.sort(key=lambda g: -g["dps_gain"])
+    winner = max(outright, key=preference) if outright else ""
+    return merged, winner
 
 
 # ---------------------------------------------------------------------------
@@ -308,14 +350,11 @@ def run_raidbots_job(spec: dict, emit_fn: Callable | None = None) -> int:
         # produced it.
         if is_crafted(difficulty):
             combos = crafted_stat_combos()
-            best: dict[int, dict] = {}
-            best_url = ""
-            best_total = None
+            by_combo: dict[str, list[dict]] = {}
+            urls: dict[str, str] = {}
             for index, combo in enumerate(combos, start=1):
                 label = f"Crafted stats {combo['label']} ({index}/{len(combos)})"
-                result = _run(
-                    replace(target, crafted_stats=combo["id"]), label,
-                )
+                result = _run(replace(target, crafted_stats=combo["id"]), label)
                 if not result.ok:
                     _emit({"type": "error",
                            "message": result.error or f"{combo['label']} sim failed or timed out"},
@@ -324,15 +363,12 @@ def run_raidbots_job(spec: dict, emit_fn: Callable | None = None) -> int:
                 gains = _fetch_gains(result.url)
                 for gain in gains:
                     gain["stats"] = combo["label"]
-                    current = best.get(gain["item_id"])
-                    if current is None or gain["dps_gain"] > current["dps_gain"]:
-                        best[gain["item_id"]] = gain
-                total = sum(g["dps_gain"] for g in gains)
-                if best_total is None or total > best_total:
-                    best_total, best_url = total, result.url
+                by_combo[combo["label"]] = gains
+                urls[combo["label"]] = result.url
 
-            _emit({"type": "done", "url": best_url,
-                   "dps_gains": list(best.values())}, emit_fn)
+            merged, winner = _merge_crafted_runs(by_combo)
+            _emit({"type": "done", "url": urls.get(winner, ""),
+                   "dps_gains": merged}, emit_fn)
             return 0
 
         result = _run(target)
