@@ -205,13 +205,27 @@ def test_items_are_levelled_by_the_crafted_bonus_ids():
         assert 12214 not in item["bonusLists"]
 
 
-def test_crafted_stats_only_go_on_items_that_have_the_slots():
+def test_the_stat_sweep_covers_every_pairing():
+    combos = pb.crafted_stat_combos()
+    assert len(combos) == 6
+    assert {c["label"] for c in combos} == {
+        "crit/haste", "crit/mastery", "crit/vers",
+        "haste/mastery", "haste/vers", "mastery/vers",
+    }
+    # ``id`` is the shape droptimizer.craftedStats takes: stat IDs.
+    by_label = {c["label"]: c["id"] for c in combos}
+    assert by_label["haste/mastery"] == "36/49"
+    assert by_label["crit/mastery"] == "32/49"
+
+
+def test_items_carry_the_runs_stat_choice():
     by_name = {e["item"]["name"]: e["item"] for e in _build()["droptimizerItems"]}
     assert by_name["Spellbreaker's Shelter"]["crafted_stats"] == "36/49"
+    # Fixed secondaries — no placeholder stats, so no choice to make.
     assert by_name["Coiled Choker"]["crafted_stats"] is None
 
 
-def test_each_item_is_simmed_once():
+def test_each_item_is_simmed_once_per_run():
     items = _build()["droptimizerItems"]
     assert len({e["item"]["id"] for e in items}) == len(items)
 
@@ -232,3 +246,154 @@ def test_enchants_carry_over_from_the_equipped_slot():
 def test_report_name_says_what_was_simmed():
     name = _build()["reportName"]
     assert "Crafted" in name and "331" in name and "R5" in name
+
+
+# ---------------------------------------------------------------------------
+# Reading the crafted result back
+# ---------------------------------------------------------------------------
+
+def _report(rows):
+    return {
+        "sim": {
+            "players": [{"collected_data": {"dps": {"mean": 100000.0}}}],
+            "profilesets": {"results": rows},
+        }
+    }
+
+
+def test_parsed_rows_start_without_a_stat_combination():
+    """The sweep stamps the pairing on afterwards, per report."""
+    import worker
+    gains = worker._parse_tooltip_data(_report([
+        {"name": "-88/-39/professionMidnightEpic-331/910001/331/0/chest///", "mean": 102400.0},
+    ]))
+    assert len(gains) == 1
+    assert gains[0]["dps_gain"] == 2400.0
+    assert gains[0]["stats"] is None
+
+
+# ---------------------------------------------------------------------------
+# The stat sweep: one sim per pairing, best result per item wins
+# ---------------------------------------------------------------------------
+
+def test_crafted_job_sims_every_stat_pairing_and_keeps_the_best(monkeypatch):
+    """Raidbots takes the stat choice sim-wide, so the run is one sim per pair."""
+    import sys
+    import types
+    import droptimizer
+    import raidbots_session
+    import sim_router
+    import worker
+
+    monkeypatch.setattr(droptimizer, "fetch_character", lambda *a, **k: {"profile": {}})
+    monkeypatch.setattr(
+        droptimizer, "fetch_static_data",
+        lambda *a, **k: pb.StaticData(encounter_items=[], instances=[], frontend_version="x"),
+    )
+    monkeypatch.setattr(raidbots_session, "make_raidbots_session", lambda *a, **k: object())
+
+    # Each pairing reports a different winner, so the merge is observable:
+    # crit/mastery is best for item 1, mastery/vers for item 2.
+    gains_by_stats = {
+        "32/49": [{"item_id": 1, "dps_gain": 900.0, "ilvl": 331, "item_name": None,
+                   "zone_name": "Epic Profession Items", "stats": None}],
+        "49/40": [{"item_id": 1, "dps_gain": 100.0, "ilvl": 331, "item_name": None,
+                   "zone_name": "Epic Profession Items", "stats": None},
+                  {"item_id": 2, "dps_gain": 1200.0, "ilvl": 331, "item_name": None,
+                   "zone_name": "Epic Profession Items", "stats": None}],
+    }
+    simmed: list[str] = []
+
+    def _fake_sim(session, identity, target, character, static, **kwargs):
+        simmed.append(target.crafted_stats)
+        return sim_router.SimResult(
+            label="Crafted", url=f"https://www.raidbots.com/simbot/report/{target.crafted_stats}", ok=True,
+        )
+
+    monkeypatch.setattr(sim_router, "run_raidbots_sim", _fake_sim)
+    monkeypatch.setattr(
+        worker, "_parse_tooltip_data",
+        lambda report: [dict(g) for g in gains_by_stats.get(report["stats"], [])],
+    )
+
+    # _fetch_gains goes through the session; hand it the pairing it just simmed.
+    def _fake_get(url, **kwargs):
+        resp = types.SimpleNamespace(ok=True)
+        resp.json = lambda: {"stats": simmed[-1]}
+        return resp
+
+    monkeypatch.setattr(
+        raidbots_session, "make_raidbots_session",
+        lambda *a, **k: types.SimpleNamespace(get=_fake_get),
+    )
+
+    events: list[dict] = []
+    code = worker.run_raidbots_job(
+        {
+            "job_id": "crafted-1",
+            "character": {
+                "name": "Xiage", "realm": "draenor", "region": "eu",
+                "spec": "Arcane", "spec_id": 62, "loot_spec_id": 62,
+                "simc_string": 'mage="Xiage"\nspec=arcane\n', "crafted_stats": "36/49",
+            },
+            "difficulty": pb.CRAFTED_DIFFICULTY,
+            "raidsid": "x",
+            "timeout_minutes": 1,
+        },
+        emit_fn=events.append,
+    )
+
+    assert code == 0
+    # Every pairing was simmed, exactly once.
+    assert sorted(simmed) == sorted(c["id"] for c in pb.crafted_stat_combos())
+
+    done = [e for e in events if e["type"] == "done"][-1]
+    by_item = {g["item_id"]: g for g in done["dps_gains"]}
+    assert by_item[1]["dps_gain"] == 900.0
+    assert by_item[1]["stats"] == "crit/mastery"
+    assert by_item[2]["stats"] == "mastery/vers"
+    # The report linked is one of the pairings that actually won something.
+    assert done["url"].rsplit("/report/", 1)[1] in {"32/49", "49/40"}
+
+
+def test_pairings_inside_the_error_band_are_a_tie():
+    """A few hundred DPS apart is sim noise, not a better craft."""
+    import worker
+
+    def row(item_id, gain, label, error=300.0):
+        return {"item_id": item_id, "dps_gain": gain, "ilvl": 331,
+                "item_name": None, "zone_name": "Epic Profession Items",
+                "stats": label, "error": error}
+
+    merged, winner = worker._merge_crafted_runs({
+        # crit/mastery wins two items outright...
+        "crit/mastery": [row(1, 2000.0, "crit/mastery"), row(2, 1500.0, "crit/mastery"),
+                         row(3, 1000.0, "crit/mastery")],
+        # ...and loses the third by less than the error, so it stays the answer
+        # rather than scattering the recommendation across pairings.
+        "haste/vers":   [row(1, 1000.0, "haste/vers"), row(2, 1000.0, "haste/vers"),
+                         row(3, 1100.0, "haste/vers")],
+    })
+
+    assert winner == "crit/mastery"
+    assert {g["item_id"]: g["stats"] for g in merged} == {
+        1: "crit/mastery", 2: "crit/mastery", 3: "crit/mastery",
+    }
+
+
+def test_a_pairing_that_wins_beyond_the_noise_is_kept():
+    import worker
+
+    def row(item_id, gain, label, error=100.0):
+        return {"item_id": item_id, "dps_gain": gain, "ilvl": 331,
+                "item_name": None, "zone_name": "Epic Profession Items",
+                "stats": label, "error": error}
+
+    merged, _ = worker._merge_crafted_runs({
+        "crit/mastery": [row(1, 2000.0, "crit/mastery"), row(2, 900.0, "crit/mastery")],
+        "haste/vers":   [row(1, 1000.0, "haste/vers"),   row(2, 1800.0, "haste/vers")],
+    })
+
+    by_item = {g["item_id"]: g for g in merged}
+    assert by_item[2]["stats"] == "haste/vers"
+    assert by_item[2]["dps_gain"] == 1800.0

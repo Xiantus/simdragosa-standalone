@@ -49,6 +49,19 @@ describe('buildLua', () => {
     expect(lua).toContain('sourceType="crafted"')
   })
 
+  it('emits the winning crafted stat combination', () => {
+    const lua = buildLua([row({
+      difficulty: 'professionMidnightEpic-331',
+      source: 'Epic Profession Items',
+      stats: 'crit/mastery',
+    })])
+    expect(lua).toContain('stats="crit/mastery"')
+  })
+
+  it('omits stats for drop loot', () => {
+    expect(buildLua([row()])).not.toContain('stats=')
+  })
+
   it('maps raid-normal difficulty to champion key', () => {
     const lua = buildLua([row({ difficulty: 'raid-normal', dps_gain: 300 })])
     expect(lua).toContain('champion=')

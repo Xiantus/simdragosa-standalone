@@ -114,6 +114,22 @@ stored results keep their source label.
 - A crafted item ships with the base-level bonus of its lowest rank (`12214`
   for Season 2 epics). It has to be stripped before the track's own base-level
   bonus goes on, or Raidbots resolves two item levels for one item.
+- **Crafted stats are a sim-wide option, not a per-item one.** Raidbots reads
+  `droptimizer.craftedStats` and builds the crafted profilesets itself — it
+  ignores per-item `crafted_stats`/`statCombo` and rebuilds the profileset
+  names, so sending one entry per stat pairing just gets deduplicated back to
+  one row per item (verified: a payload carrying a single item still came back
+  with all 20). Covering every pairing therefore means one sim per pairing;
+  `worker.run_raidbots_job` sweeps the six from `crafted_stat_combos()` and
+  keeps the best result per item along with the pairing that produced it.
+- Raidbots drops crafted items the character cannot actually gain from, so a
+  crafted run sims fewer profilesets than we send. Verified on the first live
+  run (40 sent, 20 simmed): every **embellished** item (bonus `8960`, item
+  limit category 512) is dropped when the character already wears 2/2
+  embellishments, and weapons whose main stat is wrong for the spec are
+  dropped too. Both match what raidbots.com itself does — a character at the
+  embellishment cap has to free a slot before crafted embellished gear can be
+  compared.
 - `tests/test_season_config.py` and `tests/test_crafted_config.py` pin the whole
   wiring. Run them first.
 
