@@ -50,6 +50,7 @@ export function applySchema(db: Database.Database): void {
       item_name  TEXT,
       sim_date   TEXT NOT NULL,
       source     TEXT,
+      stats      TEXT,
       PRIMARY KEY (item_id, char_name, difficulty, spec)
     );
 
