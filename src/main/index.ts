@@ -390,6 +390,7 @@ function registerIpcHandlers(): void {
             item_name: g.item_name ?? null,
             sim_date: new Date().toISOString().slice(0, 10),
             source: g.zone_name ?? null,
+            stats: g.stats ?? null,
           }))
           if (rows.length > 0) {
             deleteTooltipRowsByCharSpecDiff(db, charName, specName, difficulty)

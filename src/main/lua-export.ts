@@ -30,7 +30,8 @@ export function buildLua(rows: TooltipRow[]): string {
     icon: string | null
     updated: string
     source: string | null
-    sourceType: string | null   // "raid" | "dungeon"
+    sourceType: string | null   // "raid" | "dungeon" | "crafted"
+    stats: string | null        // crafted only: winning stat combination
   }
   const byChar: Record<string, Record<number, ItemInfo>> = {}
 
@@ -48,6 +49,7 @@ export function buildLua(rows: TooltipRow[]): string {
       charItems[row.item_id] = {
         specs: {}, ilvl: row.ilvl, name: row.item_name ?? null, icon: row.icon ?? null,
         updated: row.sim_date, source: row.source ?? null, sourceType,
+        stats: row.stats ?? null,
       }
     }
     const item = charItems[row.item_id]
@@ -60,6 +62,7 @@ export function buildLua(rows: TooltipRow[]): string {
     if (row.item_name) item.name = row.item_name
     if (row.icon && !item.icon) item.icon = row.icon
     if (row.source && !item.source) { item.source = row.source; item.sourceType = sourceType }
+    if (row.stats && !item.stats) item.stats = row.stats
   }
 
   for (const [charName, items] of Object.entries(byChar).sort()) {
@@ -82,6 +85,7 @@ export function buildLua(rows: TooltipRow[]): string {
         lines.push(`      source="${info.source.replace(/"/g, '\\"')}",`)
         lines.push(`      sourceType="${info.sourceType}",`)
       }
+      if (info.stats) lines.push(`      stats="${info.stats}",`)
       lines.push(`      updated="${info.updated}",`)
       lines.push(`    },`)
     }

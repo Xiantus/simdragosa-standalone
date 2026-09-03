@@ -58,6 +58,8 @@ export interface DpsGain {
   dps_gain: number
   ilvl: number | null
   item_name?: string | null
+  /** Crafted runs only: the stat combination that simmed best, e.g. "crit/mastery". */
+  stats?: string | null
 }
 
 export interface StoredResult {

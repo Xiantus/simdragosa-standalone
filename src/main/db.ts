@@ -14,6 +14,7 @@ export interface TooltipRow {
   sim_date: string
   source: string | null   // zone/instance name (e.g. "Liberation of Undermine")
   icon: string | null     // Wowhead icon name (e.g. "spell_holy_prayerofspirit")
+  stats?: string | null   // crafted stat combination that won (e.g. "crit/mastery")
 }
 
 export interface JobResultRow {
@@ -106,24 +107,28 @@ export function deleteCharacter(db: Database.Database, id: string): void {
 
 export function migrateTooltipData(db: Database.Database): void {
   try { db.exec('ALTER TABLE tooltip_data ADD COLUMN source TEXT') } catch (_) {}
+  try { db.exec('ALTER TABLE tooltip_data ADD COLUMN stats TEXT') } catch (_) {}
 }
 
 export function upsertTooltipRows(db: Database.Database, rows: TooltipRow[]): void {
   const stmt = db.prepare(`
     INSERT INTO tooltip_data
-      (item_id, char_name, realm, spec, difficulty, dps_gain, ilvl, item_name, sim_date, source)
+      (item_id, char_name, realm, spec, difficulty, dps_gain, ilvl, item_name, sim_date, source, stats)
     VALUES
-      (@item_id, @char_name, @realm, @spec, @difficulty, @dps_gain, @ilvl, @item_name, @sim_date, @source)
+      (@item_id, @char_name, @realm, @spec, @difficulty, @dps_gain, @ilvl, @item_name, @sim_date, @source, @stats)
     ON CONFLICT(item_id, char_name, difficulty, spec) DO UPDATE SET
       realm      = excluded.realm,
       dps_gain   = excluded.dps_gain,
       ilvl       = excluded.ilvl,
       item_name  = excluded.item_name,
       sim_date   = excluded.sim_date,
-      source     = excluded.source
+      source     = excluded.source,
+      stats      = excluded.stats
   `)
   const insertMany = db.transaction((rows: TooltipRow[]) => {
-    for (const row of rows) stmt.run(row)
+    // better-sqlite3 rejects a missing named parameter, and `stats` is only
+    // filled in by crafted sims.
+    for (const row of rows) stmt.run({ ...row, stats: row.stats ?? null })
   })
   insertMany(rows)
 }
