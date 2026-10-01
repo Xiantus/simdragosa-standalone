@@ -884,12 +884,12 @@ def build_payload(
         "text":             identity.simc_string,
         "baseActorName":    identity.name,
         "spec":             identity.spec_label,
-        "armory":           {
-            "region": identity.region,
-            "realm":  identity.realm,
-            "name":   identity.name,
-        },
-        "character":        profile,
+        # Deliberately null.  Naming the character here makes Raidbots fetch it
+        # from the armory on every submission, and that fetch fails with HTTP
+        # 403 {"error":"armory_fetch_failed"} once a few sims for one character
+        # go in back to back.  The profile already comes from the SimC string.
+        "armory":           None,
+        "character":       profile,
         "talents":          active_loadout,
         "activeLoadout":    active_loadout,
         "profileCacheId":   profile_cache_id,

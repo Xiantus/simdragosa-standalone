@@ -274,6 +274,45 @@ def fetch_static_data(session: requests.Session) -> StaticData:
     )
 
 
+_RETRYABLE_STATUSES = {429, 502, 503, 504}
+
+# Error codes Raidbots returns with a non-retryable status that are transient
+# all the same.  armory_fetch_failed comes back as a 403 when its server-side
+# armory lookup fails under a burst of submissions for one character.
+_RETRYABLE_ERRORS = {"armory_fetch_failed"}
+
+
+def _error_code(resp: requests.Response) -> str:
+    """The ``error`` field of a Raidbots JSON error body, or ``""``."""
+    try:
+        body = resp.json()
+    except ValueError:
+        return ""
+    return str(body.get("error") or "") if isinstance(body, dict) else ""
+
+
+def _describe_error(resp: requests.Response) -> str:
+    """Status plus whatever reason Raidbots gave, e.g. ``403 armory_fetch_failed``."""
+    reason = _error_code(resp) or resp.text.strip()[:200]
+    return f"{resp.status_code} {reason}".strip()
+
+
+def _is_retryable(resp: requests.Response) -> bool:
+    return (resp.status_code in _RETRYABLE_STATUSES
+            or _error_code(resp) in _RETRYABLE_ERRORS)
+
+
+def _submit_error(resp: requests.Response) -> requests.HTTPError:
+    """An HTTPError whose message carries the response body's reason.
+
+    ``raise_for_status`` only reports the status line, which is how a
+    self-explanatory ``armory_fetch_failed`` reached the UI as a bare 403.
+    """
+    return requests.HTTPError(
+        f"Raidbots rejected the sim: {_describe_error(resp)}", response=resp
+    )
+
+
 def submit_job(session: requests.Session, payload: dict, api_key: str | None) -> tuple[str, str]:
     headers = dict(RAIDBOTS_HEADERS)
     if api_key:
@@ -291,8 +330,7 @@ def submit_job(session: requests.Session, payload: dict, api_key: str | None) ->
         json.dump(payload, f, indent=2)
     log.info("Payload dumped to %s", dump_path)
 
-    _RETRYABLE = {429, 502, 503, 504}
-    _DELAYS    = [5, 15, 30]
+    _DELAYS = [5, 15, 30]
 
     resp = None
     for attempt, delay in enumerate([0] + _DELAYS):
@@ -300,17 +338,17 @@ def submit_job(session: requests.Session, payload: dict, api_key: str | None) ->
             log.warning("Retrying submission in %ds (attempt %d/3)...", delay, attempt)
             time.sleep(delay)
         resp = session.post(SUBMIT_URL, json=payload, headers=headers, timeout=60)
-        if resp.status_code not in _RETRYABLE:
+        if not _is_retryable(resp):
             break
-        log.warning("Raidbots returned %s — will retry.", resp.status_code)
+        log.warning("Raidbots returned %s — will retry.", _describe_error(resp))
     else:
         log.error("Raidbots still returned %s after %d retries: %s",
                   resp.status_code, len(_DELAYS), resp.text[:300])
-        resp.raise_for_status()
+        raise _submit_error(resp)
 
     if not resp.ok:
         log.error("Raidbots error %s: %s", resp.status_code, resp.text[:300])
-        resp.raise_for_status()
+        raise _submit_error(resp)
 
     data   = resp.json()
     # simId (alphanumeric) is used for both the poll endpoint and report URL.
