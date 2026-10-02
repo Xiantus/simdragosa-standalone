@@ -153,5 +153,11 @@ stored results keep their source label.
   `profile.equipped` (`mainHand`) and snake_case everywhere else.
 - Talents must be submitted explicitly now — `talents` and `activeLoadout` both
   take the active loadout's `string`. Omitting them fails with `no_talents`.
+- The sim payload sends `armory: null`. Naming the character there makes
+  Raidbots fetch it from the armory on every `POST /sim`, and a few submissions
+  for one character in quick succession then fail with HTTP 403
+  `{"error":"armory_fetch_failed"}` (5 of 9 jobs in one batch). `submit_job`
+  also retries that error and puts the body's `error` code in the exception —
+  `raise_for_status` alone only says "403 Forbidden".
 - `frontendVersion` is a fixed literal in Raidbots' frontend; the hashed JS
   bundle name goes in `frontendJsHash`, and `gameDataVersion` is sent too.
