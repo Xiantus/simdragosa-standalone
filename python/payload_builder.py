@@ -79,14 +79,15 @@ UPGRADE_TRACKS: dict[str, dict[str, int]] = {
 
 # Virtual instance ID → real instance IDs it aggregates.
 # -102 = Midnight Season 2 Raids
-#        (The Venomous Abyss 1320 · The Tidebound Grotto 1317)
+#        (The Venomous Abyss 1320 · The Tidebound Grotto 1317 ·
+#         The Unbinding of Kith'ix 1324, added mid-season)
 # -1   = Midnight Season 2 M+ pool (8 dungeons)
 #
 # Raidbots' own aggregate encounter list can lag behind a patch raid (this cost
 # us Sporefall in 12.0.7), so _build_droptimizer_items unions these sub-instance
 # encounters in on top of whatever the aggregate already lists.
 VIRTUAL_INSTANCES: dict[int, list[int]] = {
-    -102: [1320, 1317],
+    -102: [1320, 1317, 1324],
     -1:   [1322, 1311, 1041, 1304, 1202, 1030, 1309, 1313],
 }
 

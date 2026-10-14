@@ -72,6 +72,18 @@ ITEM_SOURCE: dict[int, tuple[str, str]] = {
     268266: ('The Tidebound Grotto', 'raid'),
     270167: ('The Tidebound Grotto', 'raid'),
 
+    # --- The Unbinding of Kith'ix (raid) --------------------------------
+    280617: ("The Unbinding of Kith'ix", 'raid'),
+    280799: ("The Unbinding of Kith'ix", 'raid'),
+    280835: ("The Unbinding of Kith'ix", 'raid'),
+    281029: ("The Unbinding of Kith'ix", 'raid'),
+    281056: ("The Unbinding of Kith'ix", 'raid'),
+    281215: ("The Unbinding of Kith'ix", 'raid'),
+    281235: ("The Unbinding of Kith'ix", 'raid'),
+    281236: ("The Unbinding of Kith'ix", 'raid'),
+    281238: ("The Unbinding of Kith'ix", 'raid'),
+    281239: ("The Unbinding of Kith'ix", 'raid'),
+
     # --- The Venomous Abyss (raid) --------------------------------------
     268196: ('The Venomous Abyss', 'raid'),
     268197: ('The Venomous Abyss', 'raid'),
