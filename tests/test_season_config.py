@@ -21,8 +21,9 @@ def test_season_is_midnight_season_2():
 
 def test_raid_pool_is_the_season_2_aggregate():
     assert pb.RAID_INSTANCE_ID == -102
-    # The Venomous Abyss (12.1 raid) and The Tidebound Grotto.
-    assert set(pb.VIRTUAL_INSTANCES[-102]) == {1320, 1317}
+    # The Venomous Abyss (12.1 raid), The Tidebound Grotto and the mid-season
+    # one-boss raid The Unbinding of Kith'ix.
+    assert set(pb.VIRTUAL_INSTANCES[-102]) == {1320, 1317, 1324}
 
 
 def test_dungeon_pool_has_the_eight_season_2_dungeons():
