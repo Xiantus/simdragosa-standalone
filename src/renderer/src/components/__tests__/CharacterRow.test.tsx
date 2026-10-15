@@ -32,10 +32,21 @@ describe('CharacterRow', () => {
     expect(screen.getByTitle('Delete')).toBeTruthy()
   })
 
-  it('calls onDelete with character id when delete button is clicked', () => {
+  it('asks for confirmation before deleting', () => {
+    const onDelete = vi.fn()
+    const onEdit = vi.fn()
+    render(<CharacterRow character={mockChar} onEdit={onEdit} onDelete={onDelete} />)
+    fireEvent.click(screen.getByTitle('Delete'))
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(screen.getByText('Delete?')).toBeTruthy()
+  })
+
+  it('calls onDelete with character id on the confirming second click', () => {
     const onDelete = vi.fn()
     render(<CharacterRow character={mockChar} onEdit={vi.fn()} onDelete={onDelete} />)
     fireEvent.click(screen.getByTitle('Delete'))
+    fireEvent.click(screen.getByText('Delete?'))
     expect(onDelete).toHaveBeenCalledWith('xiantus-fire')
   })
 

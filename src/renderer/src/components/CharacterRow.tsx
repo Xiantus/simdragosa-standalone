@@ -1,6 +1,7 @@
 import React from 'react'
 import type { Character } from '../../../shared/ipc'
 import { iconUrlFromSpecId, iconUrlFromSpecName } from '../lib/specIcons'
+import ConfirmButton from './ConfirmButton'
 
 interface Props {
   character: Character
@@ -51,31 +52,15 @@ export default function CharacterRow({ character, onEdit, onDelete, hideName }: 
           {character.ilvl ? <span>{` · ${Math.round(character.ilvl * 10) / 10}`}</span> : null}
         </div>
       </div>
-      <button
+      <ConfirmButton
         title="Delete"
-        onClick={(e) => {
-          e.stopPropagation()
-          onDelete(character.id)
-        }}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          color: 'var(--sub)',
-          cursor: 'pointer',
-          fontSize: 14,
-          padding: '2px 4px',
-          borderRadius: 4,
-          flexShrink: 0,
-        }}
-        onMouseEnter={(e) => {
-          ;(e.currentTarget as HTMLElement).style.color = 'var(--red)'
-        }}
-        onMouseLeave={(e) => {
-          ;(e.currentTarget as HTMLElement).style.color = 'var(--sub)'
-        }}
+        confirmLabel="Delete?"
+        className="danger-hover"
+        onConfirm={() => onDelete(character.id)}
+        style={{ fontSize: 14 }}
       >
         ✕
-      </button>
+      </ConfirmButton>
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import RaidbotsSignIn from './RaidbotsSignIn'
 
 interface Props {
   open: boolean
@@ -95,48 +96,44 @@ export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_
         <h3 style={{ color: 'var(--text)', fontSize: 15, fontWeight: 700 }}>Settings</h3>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <label htmlFor="settings-raidsid" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>
-              Raidbots Session ID
-            </label>
-            <button
-              type="button"
-              onClick={() => window.open('https://www.raidbots.com', '_blank')}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: 'var(--accent)', fontSize: 11, padding: 0, fontWeight: 600,
-              }}
-            >
-              raidbots.com →
-            </button>
-          </div>
-          <input
-            id="settings-raidsid"
-            type="text"
-            value={raidsid}
-            onChange={(e) => setRaidsid(e.target.value)}
-            style={inputStyle}
-            placeholder="paste your raidsid cookie value here"
-          />
-          <span style={{ fontSize: 11, color: 'var(--sub)', lineHeight: 1.5 }}>
-            Log in to raidbots.com, then open DevTools (F12) → Application → Cookies → copy the <code style={{ background: 'var(--surf2)', padding: '1px 4px', borderRadius: 3, fontSize: 10 }}>raidsid</code> value.
-          </span>
+          <label htmlFor="settings-raidsid" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>
+            Raidbots Session ID
+          </label>
+          <RaidbotsSignIn raidsid={raidsid} onRaidsidChange={setRaidsid} inputId="settings-raidsid" />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           <label htmlFor="settings-wowpath" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>
             WoW Retail Folder
           </label>
-          <input
-            id="settings-wowpath"
-            type="text"
-            value={wowPath}
-            onChange={(e) => setWowPath(e.target.value)}
-            placeholder={window.platform === 'darwin'
-              ? 'e.g. ~/Library/Application Support/World of Warcraft/_retail_'
-              : 'e.g. C:\\Games\\World of Warcraft\\_retail_'}
-            style={inputStyle}
-          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              id="settings-wowpath"
+              type="text"
+              value={wowPath}
+              onChange={(e) => setWowPath(e.target.value)}
+              placeholder={window.platform === 'darwin'
+                ? 'e.g. ~/Library/Application Support/World of Warcraft/_retail_'
+                : 'e.g. C:\\Games\\World of Warcraft\\_retail_'}
+              style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+            />
+            <button
+              type="button"
+              className="pill"
+              style={{ borderRadius: 5, whiteSpace: 'nowrap' }}
+              onClick={async () => {
+                const picked = await window.api.browseWowPath()
+                if (picked) setWowPath(picked)
+              }}
+            >
+              Browse…
+            </button>
+          </div>
+          {wowPath && !/_retail_[\\/]?$/i.test(wowPath.trim()) && (
+            <span style={{ fontSize: 11, color: 'var(--yellow)' }}>
+              ⚠ This folder usually ends in <code>_retail_</code> — the addon will not find its data otherwise.
+            </span>
+          )}
           <span style={{ fontSize: 11, color: 'var(--sub)' }}>
             {window.platform === 'darwin'
               ? 'Writes to Interface/AddOns/Simdragosa/data/SimdragosaData.lua'

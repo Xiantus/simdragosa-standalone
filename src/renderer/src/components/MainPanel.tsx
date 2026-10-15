@@ -1,5 +1,12 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useJobStore } from '../stores/useJobStore'
+import PresetBar from './PresetBar'
+import {
+  loadLastSelection, saveLastSelection, loadPresets, savePresets, upsertPreset, pruneSelection,
+  type Preset,
+} from '../lib/selection'
+import { timeAgo } from '../lib/time'
+import type { LuaWritten } from '../../../shared/ipc'
 import { useCharacterStore } from '../stores/useCharacterStore'
 import ActiveJobsStrip from './ActiveJobsStrip'
 import ResultsPanel from './ResultsPanel'
@@ -16,8 +23,13 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
   const { jobs, running, startSim, cancelJobs, wireIpcEvents } = useJobStore()
   const { characters } = useCharacterStore()
 
-  const [selectedChars, setSelectedChars] = useState<string[]>([])
-  const [selectedDiffs, setSelectedDiffs] = useState<string[]>(['raid-heroic'])
+  // Start from whatever was simmed last time — the routine run is one click.
+  const [initial] = useState(loadLastSelection)
+  const [selectedChars, setSelectedChars] = useState<string[]>(initial.chars)
+  const [selectedDiffs, setSelectedDiffs] = useState<string[]>(initial.diffs)
+  const [presets, setPresets] = useState<Preset[]>(loadPresets)
+  const [luaWritten, setLuaWritten] = useState<LuaWritten | null>(null)
+  const [, setTick] = useState(0)
   const [luaStatus, setLuaStatus] = useState<{ msg: string; ok: boolean } | null>(null)
   const [qeUrl, setQeUrl] = useState('')
   const [qeImporting, setQeImporting] = useState(false)
@@ -28,6 +40,61 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
   useEffect(() => {
     return wireIpcEvents()
   }, [])
+
+  useEffect(() => window.api.onLuaWritten?.((info) => setLuaWritten(info)) ?? (() => {}), [])
+
+  // Re-render once a minute so "updated 3m ago" stays honest.
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Forget characters that were deleted since the selection was saved.
+  useEffect(() => {
+    if (characters.length === 0) return
+    const pruned = pruneSelection({ chars: selectedChars, diffs: selectedDiffs }, characters.map((c) => c.id))
+    if (pruned.chars.length !== selectedChars.length) setSelectedChars(pruned.chars)
+  }, [characters])
+
+  useEffect(() => {
+    saveLastSelection({ chars: selectedChars, diffs: selectedDiffs })
+  }, [selectedChars, selectedDiffs])
+
+  // Desktop notification when a batch finishes while the window is in the
+  // background (minimised, in tray, or behind WoW).
+  const wasRunning = useRef(running)
+  useEffect(() => {
+    if (wasRunning.current && !running) notifyBatchDone(jobs)
+    wasRunning.current = running
+  }, [running])
+
+  const activePreset = useMemo(() => {
+    const same = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x))
+    return presets.find((p) => same(p.chars, selectedChars) && same(p.diffs, selectedDiffs))?.name ?? null
+  }, [presets, selectedChars, selectedDiffs])
+
+  const updatePresets = (next: Preset[]) => {
+    setPresets(next)
+    savePresets(next)
+  }
+
+  const handleRerun = async (charIds: string[], difficulties: string[]) => {
+    if (running) return
+    setSimError(null)
+    try {
+      await startSim({ character_ids: charIds, difficulties })
+    } catch (err: any) {
+      setSimError(err?.message ?? 'Failed to start sim')
+      setTimeout(() => setSimError(null), 10000)
+    }
+  }
+
+  const handleExportJson = async () => {
+    const res = await window.api.exportResultsJson()
+    if (res.ok) setLuaStatus({ ok: true, msg: `✓ Saved ${res.path?.split(/[\/]/).pop()}` })
+    else if (res.error) setLuaStatus({ ok: false, msg: res.error })
+    setTimeout(() => setLuaStatus(null), 6000)
+  }
 
   const canRun = selectedChars.length > 0 && selectedDiffs.length > 0
 
@@ -114,6 +181,18 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
             onChange={setSelectedChars}
           />
           <DifficultyPicker selected={selectedDiffs} onChange={setSelectedDiffs} />
+          <PresetBar
+            presets={presets}
+            activeName={activePreset}
+            canSave={canRun}
+            onApply={(p) => {
+              const known = new Set(characters.map((c) => c.id))
+              setSelectedChars(p.chars.filter((id) => known.has(id)))
+              setSelectedDiffs(p.diffs)
+            }}
+            onSave={(name) => updatePresets(upsertPreset(presets, { name, chars: selectedChars, diffs: selectedDiffs }))}
+            onDelete={(name) => updatePresets(presets.filter((p) => p.name !== name))}
+          />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
           <RunButton disabled={!canRun} running={running} onClick={handleGo} />
@@ -218,7 +297,7 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
       </div>
 
       {/* Active jobs */}
-      <ActiveJobsStrip running={running} jobs={jobs} />
+      <ActiveJobsStrip running={running} jobs={jobs} onCancelJob={useJobStore.getState().cancelJob} />
 
       {/* Results header */}
       {completed.length > 0 && (
@@ -239,6 +318,15 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
             RESULTS
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {!luaStatus && luaWritten && (
+              <span
+                data-testid="lua-written"
+                title={`Written to ${luaWritten.path}`}
+                style={{ fontSize: 11, color: 'var(--sub)' }}
+              >
+                Addon data updated {timeAgo(luaWritten.at)} — /reload in WoW
+              </span>
+            )}
             {luaStatus && (
               <span style={{
                 fontSize: 11,
@@ -249,8 +337,15 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
               </span>
             )}
             <button
+              className="pill"
+              onClick={handleExportJson}
+              title="Save every character's latest results as a JSON file to share"
+            >
+              Export JSON
+            </button>
+            <button
               onClick={handleWriteLua}
-              title="Write SimdragosaData.lua to the WoW addon folder"
+              title="The addon data is rewritten automatically after every sim. Use this to rewrite it by hand, e.g. after reinstalling the addon."
               style={{
                 padding: '4px 12px',
                 borderRadius: 5,
@@ -314,9 +409,30 @@ export default function MainPanel({ playwrightInstalled = true, onInstallPlaywri
             </span>
           </div>
         ) : (
-          <ResultsPanel jobs={completed} />
+          <ResultsPanel
+            jobs={completed}
+            characters={characters}
+            running={running}
+            onRerun={handleRerun}
+          />
         )}
       </section>
     </main>
   )
+}
+
+function notifyBatchDone(jobs: { status: string; ended_at?: number }[]): void {
+  try {
+    if (typeof Notification === 'undefined') return
+    if (document.hasFocus() && !document.hidden) return
+    // Only this batch: anything that finished in the last few hours.
+    const recent = jobs.filter((j) => j.ended_at && Date.now() - j.ended_at < 6 * 3600_000)
+    const done = recent.filter((j) => j.status === 'done').length
+    const failed = recent.filter((j) => j.status === 'error').length
+    if (done + failed === 0) return
+    const body = failed
+      ? `${done} sim${done !== 1 ? 's' : ''} done, ${failed} failed.`
+      : `${done} sim${done !== 1 ? 's' : ''} done — /reload in WoW to see them.`
+    new Notification('Simdragosa', { body, silent: false })
+  } catch { /* notifications unavailable */ }
 }

@@ -44,7 +44,7 @@ function ensureSessionSetup(): void {
       callback({})
       if (!pendingCapture) return
 
-      const parts = (details.uploadData ?? []) as Array<{ bytes?: ArrayBuffer }>
+      const parts = (details.uploadData ?? []) as unknown as Array<{ bytes?: ArrayBuffer }>
       const bufs = parts.filter(p => p.bytes).map(p => Buffer.from(p.bytes!))
       if (bufs.length === 0) return
 
