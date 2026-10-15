@@ -80,6 +80,8 @@ export interface StoredResult {
   dps_gains?: DpsGain[]
   ended_at?: number
   error_message?: string
+  /** Set when the latest re-run failed; the record itself is the last success. */
+  rerun_error?: string
 }
 
 export interface JobUpdate {

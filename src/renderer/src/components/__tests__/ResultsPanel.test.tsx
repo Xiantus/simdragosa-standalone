@@ -91,6 +91,12 @@ describe('ResultsPanel', () => {
     expect(screen.getByRole('tab', { name: 'Best items' }).getAttribute('aria-selected')).toBe('true')
   })
 
+  it('keeps showing results whose re-run failed, with a warning', () => {
+    render(<ResultsPanel jobs={[job({ rerun_error: 'armory_fetch_failed' })]} />)
+    expect(screen.getByText('2 upgrades')).toBeTruthy()
+    expect(screen.getByTitle('armory_fetch_failed')).toBeTruthy()
+  })
+
   it('asks before deleting a result', () => {
     render(<ResultsPanel jobs={[job({})]} />)
     fireEvent.mouseEnter(screen.getByTestId('diff-card'))

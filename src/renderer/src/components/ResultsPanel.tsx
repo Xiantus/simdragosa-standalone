@@ -397,6 +397,12 @@ function DiffCard({
         </div>
       )}
 
+      {job.rerun_error && (
+        <div style={{ fontSize: 10, color: 'var(--yellow)', marginTop: 2 }} title={job.rerun_error}>
+          ⚠ last re-run failed
+        </div>
+      )}
+
       {/* Inline error — replaces window.alert */}
       {job.status === 'error' && job.error_message && (
         <div style={{ marginTop: 4 }}>

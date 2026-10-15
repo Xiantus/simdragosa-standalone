@@ -13,6 +13,7 @@ export interface ActiveJob {
   url?: string
   dps_gains?: DpsGain[]
   error_message?: string
+  rerun_error?: string
   log_lines: string[]
   started_at: number
   ended_at?: number
@@ -181,6 +182,7 @@ export const useJobStore = create<JobState>((set, get) => ({
           url: r.url,
           dps_gains: r.dps_gains,
           error_message: r.error_message,
+          rerun_error: r.rerun_error,
           log_lines: [],
           started_at: r.ended_at ?? 0,
           ended_at: r.ended_at,

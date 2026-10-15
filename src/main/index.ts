@@ -408,9 +408,16 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('getJobResults', () => {
     const rows = getJobResults(db)
-    // Return the latest_job record for each key; fall back to last_success_job
+    // The latest record for each key — except when a re-run failed after an
+    // earlier success: keep showing the good results, flagged with the error.
     return rows
-      .map((r) => r.latest_job ?? r.last_success_job)
+      .map((r) => {
+        const latest = r.latest_job
+        if (latest?.status === 'error' && r.last_success_job) {
+          return { ...r.last_success_job, rerun_error: latest.error_message ?? latest.message ?? 'Re-run failed' }
+        }
+        return latest ?? r.last_success_job
+      })
       .filter(Boolean)
   })
 
