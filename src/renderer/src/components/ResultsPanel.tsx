@@ -680,7 +680,6 @@ function CharacterSection({
   const hue = nameToHue(charName)
   const charAccent = `hsl(${hue}, 60%, 62%)`
   const metric = metricFor(allJobs)
-  const best = view === 'best' || view === 'farm' ? bestItems(allJobs) : []
 
   // Re-run everything shown for this character: its specs × the difficulties it has results for.
   const rerunIds = [...new Set(allJobs.map((j) => j.char_id).filter(Boolean))]
@@ -805,8 +804,20 @@ function CharacterSection({
               onRerunJob={(job) => onRerun([job.char_id], [job.difficulty])}
             />
           ))}
-          {view === 'best' && <div style={{ marginBottom: 10 }}><BestItemsTable items={best} metric={metric} /></div>}
-          {view === 'farm' && <div style={{ marginBottom: 10 }}><FarmView items={best} metric={metric} /></div>}
+          {/* Specs value items differently, so each gets its own table. */}
+          {(view === 'best' || view === 'farm') && specOrder.map((spec) => {
+            const items = bestItems(specMap.get(spec)!)
+            return (
+              <div key={spec} style={{ marginBottom: 12 }}>
+                {specOrder.length > 1 && (
+                  <div className="section-label" style={{ marginBottom: 6 }}>{spec.toUpperCase()}</div>
+                )}
+                {view === 'best'
+                  ? <BestItemsTable items={items} metric={metric} />
+                  : <FarmView items={items} metric={metric} />}
+              </div>
+            )
+          })}
           {view === 'history' && <div style={{ marginBottom: 10 }}><HistoryView charName={charName} metric={metric} /></div>}
         </div>
       )}

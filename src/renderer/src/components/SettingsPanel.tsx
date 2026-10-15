@@ -115,7 +115,7 @@ export default function SettingsPanel({ open, raidsid: initialRaidsid = '', wow_
               placeholder={window.platform === 'darwin'
                 ? 'e.g. ~/Library/Application Support/World of Warcraft/_retail_'
                 : 'e.g. C:\\Games\\World of Warcraft\\_retail_'}
-              style={inputStyle}
+              style={{ ...inputStyle, flex: 1, minWidth: 0 }}
             />
             <button
               type="button"

@@ -115,7 +115,11 @@ export default function App(): JSX.Element {
       style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}
     >
       <TitleBar onSettingsClick={() => setSettingsOpen(true)} />
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      {/* Leave room for the fixed banners so they never cover the last results. */}
+      <div style={{
+        flex: 1, display: 'flex', overflow: 'hidden',
+        paddingBottom: (simcExports.length + (updateReady ? 1 : 0)) * 36,
+      }}>
         <Sidebar />
         <MainPanel />
       </div>
