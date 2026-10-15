@@ -48,3 +48,49 @@ body {
 [data-overlay="true"] {
   background: rgba(10, 10, 20, 0.82) !important;
 }
+
+/* Keyboard focus — inline styles cannot express :focus-visible, so it lives here. */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--acc-h);
+  outline-offset: 1px;
+}
+
+.danger-hover:hover { color: var(--red) !important; }
+
+/* Shared pill button used by the results toolbar */
+.pill {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surf2);
+  color: var(--sub);
+  transition: all 0.12s;
+}
+.pill:hover { color: var(--text); }
+.pill[data-active="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.pill[data-ok="true"] { border-color: var(--green); color: var(--green); }
+
+.section-label {
+  font-size: 10px;
+  color: var(--sub);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-family: var(--font-display);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}

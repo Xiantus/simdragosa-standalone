@@ -27,13 +27,13 @@ describe('OnboardingFlow', () => {
 
   it('renders raidsid input field', () => {
     render(<OnboardingFlow isConfigured={false} onComplete={vi.fn()} />)
-    expect(screen.getByLabelText('Raidbots Session ID')).toBeTruthy()
+    expect((fireEvent.click(screen.getByText(/Paste the raidsid cookie/)), screen.getByLabelText('Raidbots Session ID'))).toBeTruthy()
   })
 
   it('calls saveSettings and onComplete when form is submitted', async () => {
     const onComplete = vi.fn()
     render(<OnboardingFlow isConfigured={false} onComplete={onComplete} />)
-    fireEvent.change(screen.getByLabelText('Raidbots Session ID'), {
+    fireEvent.change((fireEvent.click(screen.getByText(/Paste the raidsid cookie/)), screen.getByLabelText('Raidbots Session ID')), {
       target: { value: 'my-session-id-123' },
     })
     fireEvent.click(screen.getByText('Save & Continue'))

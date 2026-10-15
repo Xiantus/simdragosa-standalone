@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import RaidbotsSignIn from './RaidbotsSignIn'
 
 interface Props {
   isConfigured: boolean
@@ -48,8 +49,8 @@ export default function OnboardingFlow({ isConfigured, onComplete }: Props): JSX
             Welcome to Simdragosa
           </h2>
           <p style={{ color: 'var(--sub)', fontSize: 13, lineHeight: 1.5 }}>
-            To get started, enter your Raidbots session ID. You can find it in your browser's
-            cookies after logging into raidbots.com (cookie name: <code>raidsid</code>).
+            To get started, sign in to Raidbots. Simdragosa uses your Raidbots session to
+            submit Droptimizer sims on your behalf.
           </p>
         </div>
 
@@ -57,23 +58,12 @@ export default function OnboardingFlow({ isConfigured, onComplete }: Props): JSX
           <label htmlFor="onboarding-raidsid" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>
             Raidbots Session ID
           </label>
-          <input
-            id="onboarding-raidsid"
-            type="text"
-            value={raidsid}
-            onChange={(e) => setRaidsid(e.target.value)}
-            required
-            placeholder="paste your raidsid cookie value here"
-            style={{
-              background: 'var(--surf2)', border: '1px solid var(--border)', borderRadius: 5,
-              color: 'var(--text)', padding: '8px 12px', fontSize: 13, outline: 'none',
-            }}
-          />
+          <RaidbotsSignIn raidsid={raidsid} onRaidsidChange={setRaidsid} inputId="onboarding-raidsid" />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <label htmlFor="onboarding-wowpath" style={{ fontSize: 12, color: 'var(--sub)', fontWeight: 600 }}>
-            WoW SavedVariables Path <span style={{ color: 'var(--sub)', fontWeight: 400 }}>(optional)</span>
+            WoW _retail_ Folder <span style={{ color: 'var(--sub)', fontWeight: 400 }}>(optional)</span>
           </label>
           <input
             id="onboarding-wowpath"

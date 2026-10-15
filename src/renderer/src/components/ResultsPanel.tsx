@@ -2,32 +2,16 @@ import React, { useState, useEffect, useRef } from 'react'
 import { iconUrlFromSpecName } from '../lib/specIcons'
 import { useJobStore, type ActiveJob } from '../stores/useJobStore'
 import { exportableLinks, formatLinkList, formatDiscordMessage } from '../lib/reportLinks'
-import type { DpsGain } from '../../../shared/ipc'
-
-const DIFF_LABELS: Record<string, string> = {
-  'raid-normal':            'Normal',
-  'raid-heroic':            'Heroic',
-  'raid-mythic':            'Mythic',
-  'dungeon-mythic10':       'M+10',
-  'dungeon-mythic-weekly10': 'M+10 Vault',
-  'professionMidnightEpic-331': 'Crafted',
-}
-
-const DIFF_ORDER = [
-  'raid-normal',
-  'raid-heroic',
-  'raid-mythic',
-  'dungeon-mythic10',
-  'dungeon-mythic-weekly10',
-  'professionMidnightEpic-331',
-]
-
-function diffRank(diff: string): number {
-  const i = DIFF_ORDER.indexOf(diff)
-  return i === -1 ? 99 : i
-}
+import { DIFF_LABELS, diffLabel, diffRank } from '../lib/difficulties'
+import { timeAgo, isStale } from '../lib/time'
+import { bestItems, farmSummary, diffsOf, type BestItem } from '../lib/resultsAgg'
+import { useItemMeta, iconUrl, type ItemMeta } from '../lib/useItemMeta'
+import ConfirmButton from './ConfirmButton'
+import HistoryView from './HistoryView'
+import type { Character, DpsGain } from '../../../shared/ipc'
 
 const LS_CHAR_ORDER = 'simdragosa:char-order'
+const LS_VIEW = 'simdragosa:results-view'
 
 // WoW item quality colour scale (best → common)
 const WOW_QUALITY_COLORS = [
@@ -50,89 +34,124 @@ function nameToHue(name: string): number {
   return HUES[h % HUES.length]
 }
 
+function metricFor(jobs: { build_label?: string }[]): string {
+  return jobs.some((j) => j.build_label?.startsWith('QE')) ? 'hps' : 'dps'
+}
+
+function fmtGain(n: number): string {
+  return n.toLocaleString(undefined, { maximumFractionDigits: 1 })
+}
+
+function lsGet(key: string): string | null {
+  try { return localStorage.getItem(key) } catch { return null }
+}
+function lsSet(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value)
+  } catch { /* storage unavailable */ }
+}
+
+// ── Item label (icon + name + ilvl + source) ─────────────────────────────────
+
+function ItemLabel({ itemId, name, ilvl, stats, source, color, bold, meta, wide }: {
+  itemId: number
+  name?: string | null
+  ilvl?: number | null
+  stats?: string | null
+  source?: string | null
+  color: string
+  bold?: boolean
+  meta?: ItemMeta
+  wide?: boolean
+}): JSX.Element {
+  const rawName = name ?? meta?.name
+  const label = rawName ? rawName.replace(/_/g, ' ') : `Item #${itemId}`
+  const icon = iconUrl(meta?.icon)
+  const src = source || meta?.source
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      <div style={{
+        width: wide ? 22 : 18, height: wide ? 22 : 18, flexShrink: 0, borderRadius: 3,
+        background: 'var(--surf2)', border: `1px solid ${color}55`, overflow: 'hidden',
+      }}>
+        {icon && (
+          <img src={icon} alt="" width="100%" height="100%"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+        )}
+      </div>
+      <div style={{ minWidth: 0, lineHeight: 1.25 }}>
+        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: wide ? 12 : 11 }}>
+          <a
+            href={`https://www.wowhead.com/item=${itemId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={label}
+            style={{ color, textDecoration: 'none', fontWeight: bold ? 600 : 400 }}
+          >
+            {label}
+          </a>
+          {ilvl != null && <span style={{ color: 'var(--sub)', marginLeft: 4 }}>({ilvl})</span>}
+          {/* Crafted runs sim every stat combination — say which one won. */}
+          {stats && <span style={{ color: 'var(--accent)', marginLeft: 4 }}>{stats}</span>}
+        </div>
+        {src && (
+          <div style={{ fontSize: 10, color: 'var(--sub)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {src}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── DPS gain bars ────────────────────────────────────────────────────────────
 
-interface ItemMeta { name: string }
+const BAR_LIMIT = 12
 
 function DpsGainBars({ gains, wide = false, metricLabel = 'dps' }: {
   gains: DpsGain[]
   wide?: boolean
   metricLabel?: string
 }): JSX.Element {
-  const [meta, setMeta] = useState<Record<number, ItemMeta>>({})
-  // Animate bars in from 0 width
   const [mounted, setMounted] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  const meta = useItemMeta(gains.map((g) => g.item_id))
 
+  // Animate bars in from 0 width
   useEffect(() => {
     setMounted(false)
     const id = requestAnimationFrame(() => setMounted(true))
     return () => cancelAnimationFrame(id)
   }, [gains])
 
-  useEffect(() => {
-    const unknownIds = gains
-      .filter((g) => !g.item_name)
-      .map((g) => g.item_id)
-      .filter((id, i, arr) => arr.indexOf(id) === i)
-    if (unknownIds.length === 0) return
-    window.api
-      .fetchItemNames(unknownIds)
-      .then((r) => { if (Object.keys(r).length > 0) setMeta(r) })
-      .catch(() => {})
-  }, [gains])
-
-  const sorted = [...gains].sort((a, b) => b.dps_gain - a.dps_gain).slice(0, 12)
-  const maxGain = sorted[0]?.dps_gain ?? 1
-  const labelWidth = wide ? 220 : 160
-  const dpsWidth = wide ? 90 : 72
+  const all = [...gains].sort((a, b) => b.dps_gain - a.dps_gain)
+  const sorted = showAll ? all : all.slice(0, BAR_LIMIT)
+  const maxGain = all[0]?.dps_gain ?? 1
+  const labelWidth = wide ? 260 : 190
+  const dpsWidth = wide ? 120 : 96
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: wide ? 5 : 4 }}>
       {sorted.map((g, index) => {
         const pct = Math.max(4, (g.dps_gain / maxGain) * 100)
         const color = qualityColor(index)
-        const rawName = g.item_name ?? meta[g.item_id]?.name
-        const label = rawName ? rawName.replace(/_/g, ' ') : `Item #${g.item_id}`
         return (
           <div key={`${g.item_id}-${g.dps_gain}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: labelWidth,
-              fontSize: wide ? 12 : 11,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              flexShrink: 0,
-            }}>
-              <a
-                href={`https://www.wowhead.com/item=${g.item_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color, textDecoration: 'none', cursor: 'pointer', fontWeight: index < 3 ? 600 : 400 }}
-              >
-                {label}
-              </a>
-              {g.ilvl != null && (
-                <span style={{ color: 'var(--sub)', marginLeft: 4 }}>({g.ilvl})</span>
-              )}
-              {/* Crafted runs sim every stat combination — say which one won. */}
-              {g.stats && (
-                <span style={{ color: 'var(--accent)', marginLeft: 4 }}>{g.stats}</span>
-              )}
+            <div style={{ width: labelWidth, flexShrink: 0 }}>
+              <ItemLabel
+                itemId={g.item_id} name={g.item_name} ilvl={g.ilvl} stats={g.stats}
+                source={g.zone_name} color={color} bold={index < 3} meta={meta[g.item_id]} wide={wide}
+              />
             </div>
-            <div style={{
-              flex: 1,
-              height: wide ? 12 : 10,
-              background: 'var(--border)',
-              borderRadius: 3,
-              overflow: 'hidden',
-            }}>
+            <div style={{ flex: 1, height: wide ? 12 : 10, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
               <div style={{
                 width: mounted ? `${pct}%` : '0%',
                 height: '100%',
                 borderRadius: 3,
                 background: `linear-gradient(90deg, ${color}99, ${color})`,
                 boxShadow: index === 0 ? `0 0 6px ${color}60` : 'none',
-                transition: `width 0.45s cubic-bezier(0.4, 0, 0.2, 1) ${index * 35}ms`,
+                transition: `width 0.45s cubic-bezier(0.4, 0, 0.2, 1) ${Math.min(index, 20) * 35}ms`,
               }} />
             </div>
             <div style={{
@@ -143,12 +162,26 @@ function DpsGainBars({ gains, wide = false, metricLabel = 'dps' }: {
               flexShrink: 0,
               fontVariantNumeric: 'tabular-nums',
               fontWeight: index === 0 ? 700 : 400,
+              lineHeight: 1.25,
             }}>
-              +{g.dps_gain.toLocaleString(undefined, { maximumFractionDigits: 1 })} {metricLabel}
+              +{fmtGain(g.dps_gain)} {metricLabel}
+              {g.pct != null && (
+                <div style={{ fontSize: 10, color: 'var(--sub)', fontWeight: 400 }}>+{g.pct.toFixed(2)}%</div>
+              )}
             </div>
           </div>
         )
       })}
+      {all.length > BAR_LIMIT && (
+        <button
+          type="button"
+          className="pill"
+          onClick={() => setShowAll((v) => !v)}
+          style={{ alignSelf: 'flex-start', marginTop: 4 }}
+        >
+          {showAll ? 'Show top 12' : `Show all ${all.length}`}
+        </button>
+      )}
     </div>
   )
 }
@@ -156,7 +189,6 @@ function DpsGainBars({ gains, wide = false, metricLabel = 'dps' }: {
 // ── Full-width expanded panel ─────────────────────────────────────────────────
 
 function ExpandedPanel({ job, onClose }: { job: ActiveJob; onClose: () => void }): JSX.Element {
-  const diffLabel = DIFF_LABELS[job.difficulty] ?? job.difficulty
   const upgradeCount = job.dps_gains?.length ?? 0
 
   return (
@@ -169,17 +201,17 @@ function ExpandedPanel({ job, onClose }: { job: ActiveJob; onClose: () => void }
     }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10, gap: 8 }}>
         <span style={{
-          fontWeight: 700,
-          fontSize: 12,
-          color: 'var(--text)',
-          fontFamily: 'var(--font-display)',
-          letterSpacing: '0.04em',
+          fontWeight: 700, fontSize: 12, color: 'var(--text)',
+          fontFamily: 'var(--font-display)', letterSpacing: '0.04em',
         }}>
-          {diffLabel}
+          {diffLabel(job.difficulty)}
         </span>
         <span style={{ fontSize: 11, color: 'var(--sub)' }}>
           {upgradeCount} upgrade{upgradeCount !== 1 ? 's' : ''}
         </span>
+        {job.ended_at && (
+          <span style={{ fontSize: 11, color: 'var(--sub)' }}>· simmed {timeAgo(job.ended_at)}</span>
+        )}
         {job.build_label && job.build_label !== 'Default' && (
           <span style={{ fontSize: 11, color: 'var(--sub)', fontStyle: 'italic' }}>
             · {job.build_label}
@@ -189,42 +221,28 @@ function ExpandedPanel({ job, onClose }: { job: ActiveJob; onClose: () => void }
           <a
             href={job.url}
             onClick={(e) => { e.preventDefault(); window.open(job.url!, '_blank') }}
-            style={{
-              marginLeft: 'auto',
-              marginRight: 8,
-              color: 'var(--accent)',
-              fontSize: 11,
-              fontWeight: 600,
-              textDecoration: 'none',
-            }}
+            style={{ marginLeft: 'auto', marginRight: 8, color: 'var(--accent)', fontSize: 11, fontWeight: 600, textDecoration: 'none' }}
           >
             View Report →
           </a>
         )}
         <button
+          type="button"
           onClick={onClose}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--sub)',
-            fontSize: 14,
-            padding: '0 2px',
-            lineHeight: 1,
-            flexShrink: 0,
-          }}
+          aria-label="Close"
           title="Close"
+          style={{
+            marginLeft: job.url ? 0 : 'auto',
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--sub)', fontSize: 14, padding: '0 2px', lineHeight: 1, flexShrink: 0,
+          }}
         >
           ✕
         </button>
       </div>
 
       {job.dps_gains && (
-        <DpsGainBars
-          gains={job.dps_gains}
-          wide
-          metricLabel={job.build_label?.startsWith('QE') ? 'hps' : 'dps'}
-        />
+        <DpsGainBars gains={job.dps_gains} wide metricLabel={metricFor([job])} />
       )}
     </div>
   )
@@ -235,19 +253,27 @@ function ExpandedPanel({ job, onClose }: { job: ActiveJob; onClose: () => void }
 function DiffCard({
   job,
   isExpanded,
+  gearChangedAt,
+  canRerun,
   onToggle,
   onDelete,
+  onRerun,
 }: {
   job: ActiveJob
   isExpanded: boolean
+  /** When the character's gear profile last changed (ms), if known. */
+  gearChangedAt?: number | null
+  canRerun: boolean
   onToggle: () => void
   onDelete: () => void
+  onRerun: () => void
 }): JSX.Element {
-  const diffLabel = DIFF_LABELS[job.difficulty] ?? job.difficulty
   const hasGains = job.status === 'done' && job.dps_gains && job.dps_gains.length > 0
   const [hovered, setHovered] = useState(false)
   const [errorExpanded, setErrorExpanded] = useState(false)
   const isActive = ['queued', 'fetching', 'submitting', 'running'].includes(job.status)
+  const gearChanged = !!(gearChangedAt && job.ended_at && gearChangedAt > job.ended_at)
+  const stale = job.status === 'done' && (isStale(job.ended_at) || gearChanged)
 
   const statusColor =
     job.status === 'done'      ? 'var(--green)' :
@@ -258,12 +284,20 @@ function DiffCard({
     job.status === 'error'     ? 'ERROR' :
     job.status === 'cancelled' ? 'CANCELLED' :
     job.status === 'done'
-      ? (hasGains ? `${job.dps_gains!.length} upgrades` : 'DONE')
+      ? (hasGains ? `${job.dps_gains!.length} upgrades` : 'NO UPGRADES')
       : job.status.toUpperCase()
+
+  const top = hasGains ? Math.max(...job.dps_gains!.map((g) => g.dps_gain)) : null
 
   return (
     <div
+      data-testid="diff-card"
+      data-stale={stale ? 'true' : undefined}
+      role={hasGains ? 'button' : undefined}
+      tabIndex={hasGains ? 0 : undefined}
+      aria-expanded={hasGains ? isExpanded : undefined}
       onClick={() => hasGains && onToggle()}
+      onKeyDown={(e) => { if (hasGains && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onToggle() } }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -272,27 +306,22 @@ function DiffCard({
         border: `1px solid ${isExpanded ? 'var(--accent)' : 'var(--border)'}`,
         borderRadius: 6,
         padding: '7px 10px',
-        flex: '1 1 110px',
-        minWidth: 110,
-        maxWidth: 180,
+        flex: '1 1 130px',
+        minWidth: 130,
+        maxWidth: 200,
         cursor: hasGains ? 'pointer' : 'default',
-        transition: 'border-color 0.15s, background 0.12s',
+        transition: 'border-color 0.15s, background 0.12s, opacity 0.15s',
+        opacity: stale && !hovered && !isExpanded ? 0.6 : 1,
       }}
     >
-      {/* Header row: diff label + chevron + delete */}
+      {/* Header row: diff label + chevron + actions */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 5, gap: 4 }}>
         <span style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: 'var(--sub)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          fontFamily: 'var(--font-display)',
-          flex: 1,
+          fontSize: 10, fontWeight: 700, color: 'var(--sub)', textTransform: 'uppercase',
+          letterSpacing: '0.06em', fontFamily: 'var(--font-display)', flex: 1,
         }}>
-          {diffLabel}
+          {diffLabel(job.difficulty)}
         </span>
-        {/* Expand chevron — shown when card has gains */}
         {hasGains && (
           <span style={{
             fontSize: 9,
@@ -304,25 +333,30 @@ function DiffCard({
             ▼
           </span>
         )}
-        {hovered && !isActive && (
+        {hovered && !isActive && canRerun && (
           <button
-            onClick={(e) => { e.stopPropagation(); onDelete() }}
-            title="Delete this sim"
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onRerun() }}
+            title="Re-run this sim"
+            aria-label={`Re-run ${diffLabel(job.difficulty)}`}
             style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--sub)',
-              fontSize: 11,
-              lineHeight: 1,
-              padding: '0 0 0 2px',
-              flexShrink: 0,
+              background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sub)',
+              fontSize: 12, lineHeight: 1, padding: '0 2px', flexShrink: 0,
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--red)' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--sub)' }}
+          >
+            ↻
+          </button>
+        )}
+        {hovered && !isActive && (
+          <ConfirmButton
+            title="Delete this sim"
+            confirmLabel="Delete?"
+            className="danger-hover"
+            onConfirm={onDelete}
+            style={{ fontSize: 11, padding: '0 0 0 2px' }}
           >
             ✕
-          </button>
+          </ConfirmButton>
         )}
       </div>
 
@@ -341,6 +375,22 @@ function DiffCard({
         )}
       </div>
 
+      {top != null && (
+        <div style={{ fontSize: 10, color: 'var(--sub)', marginTop: 2 }}>
+          best +{fmtGain(top)}
+        </div>
+      )}
+
+      {/* Age / staleness */}
+      {job.ended_at && !isActive && (
+        <div
+          style={{ fontSize: 10, color: gearChanged ? 'var(--yellow)' : 'var(--sub)', marginTop: 2 }}
+          title={new Date(job.ended_at).toLocaleString()}
+        >
+          {timeAgo(job.ended_at)}{gearChanged ? ' · gear changed since' : stale ? ' · stale' : ''}
+        </div>
+      )}
+
       {job.build_label && job.build_label !== 'Default' && (
         <div style={{ fontSize: 10, color: 'var(--sub)', fontStyle: 'italic', marginTop: 2 }}>
           {job.build_label}
@@ -350,20 +400,17 @@ function DiffCard({
       {/* Inline error — replaces window.alert */}
       {job.status === 'error' && job.error_message && (
         <div style={{ marginTop: 4 }}>
-          <div
+          <button
+            type="button"
             style={{
-              fontSize: 10,
-              color: 'var(--red)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
+              fontSize: 10, color: 'var(--red)', cursor: 'pointer', display: 'flex',
+              alignItems: 'center', gap: 4, background: 'none', border: 'none', padding: 0,
             }}
             onClick={(e) => { e.stopPropagation(); setErrorExpanded((v) => !v) }}
           >
             <span>{errorExpanded ? '▲' : '▼'}</span>
             <span>{errorExpanded ? 'Hide error' : 'Show error'}</span>
-          </div>
+          </button>
           {errorExpanded && (
             <div
               style={{
@@ -384,20 +431,15 @@ function DiffCard({
             >
               {job.error_message}
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation()
                   navigator.clipboard.writeText(job.error_message ?? '').catch(() => {})
                 }}
                 style={{
-                  display: 'block',
-                  marginTop: 4,
-                  background: 'none',
-                  border: '1px solid rgba(248,113,113,0.4)',
-                  borderRadius: 3,
-                  color: 'var(--red)',
-                  fontSize: 10,
-                  cursor: 'pointer',
-                  padding: '2px 6px',
+                  display: 'block', marginTop: 4, background: 'none',
+                  border: '1px solid rgba(248,113,113,0.4)', borderRadius: 3,
+                  color: 'var(--red)', fontSize: 10, cursor: 'pointer', padding: '2px 6px',
                 }}
               >
                 Copy
@@ -412,36 +454,25 @@ function DiffCard({
 
 // ── Spec sub-group ────────────────────────────────────────────────────────────
 
-function SpecSection({ spec, jobs, onDeleteJob }: {
+function SpecSection({ spec, jobs, gearChangedAt, canRerun, onDeleteJob, onRerunJob }: {
   spec: string
   jobs: ActiveJob[]
+  gearChangedAt?: number | null
+  canRerun: boolean
   onDeleteJob: (job: ActiveJob) => void
+  onRerunJob: (job: ActiveJob) => void
 }): JSX.Element {
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
 
-  const sorted = [...jobs].sort((a, b) => {
-    const ai = DIFF_ORDER.indexOf(a.difficulty)
-    const bi = DIFF_ORDER.indexOf(b.difficulty)
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
-  })
-
+  const sorted = [...jobs].sort((a, b) => diffRank(a.difficulty) - diffRank(b.difficulty))
   const expandedJob = expandedJobId ? sorted.find((j) => j.job_id === expandedJobId) ?? null : null
-
-  function toggle(jobId: string) {
-    setExpandedJobId((prev) => (prev === jobId ? null : jobId))
-  }
 
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
         <div style={{
-          position: 'relative',
-          width: 14,
-          height: 14,
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          position: 'relative', width: 14, height: 14, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)' }} />
           {iconUrlFromSpecName(spec) && (
@@ -456,12 +487,8 @@ function SpecSection({ spec, jobs, onDeleteJob }: {
           )}
         </div>
         <span style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: 'var(--sub)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-          fontFamily: 'var(--font-display)',
+          fontSize: 10, fontWeight: 700, color: 'var(--sub)', textTransform: 'uppercase',
+          letterSpacing: '0.08em', fontFamily: 'var(--font-display)',
         }}>
           {spec}
         </span>
@@ -473,8 +500,11 @@ function SpecSection({ spec, jobs, onDeleteJob }: {
             key={job.job_id}
             job={job}
             isExpanded={expandedJobId === job.job_id}
-            onToggle={() => toggle(job.job_id)}
+            gearChangedAt={gearChangedAt}
+            canRerun={canRerun && job.difficulty !== 'all'}
+            onToggle={() => setExpandedJobId((prev) => (prev === job.job_id ? null : job.job_id))}
             onDelete={() => onDeleteJob(job)}
+            onRerun={() => onRerunJob(job)}
           />
         ))}
       </div>
@@ -482,6 +512,104 @@ function SpecSection({ spec, jobs, onDeleteJob }: {
       {expandedJob && expandedJob.dps_gains && (
         <ExpandedPanel job={expandedJob} onClose={() => setExpandedJobId(null)} />
       )}
+    </div>
+  )
+}
+
+// ── Cross-difficulty views ───────────────────────────────────────────────────
+
+function BestItemsTable({ items, metric }: { items: BestItem[]; metric: string }): JSX.Element {
+  const [showAll, setShowAll] = useState(false)
+  const meta = useItemMeta(items.map((i) => i.item_id))
+  const diffs = diffsOf(items)
+  const shown = showAll ? items : items.slice(0, 20)
+
+  if (items.length === 0) {
+    return <div style={{ fontSize: 12, color: 'var(--sub)' }}>No upgrades in these results.</div>
+  }
+
+  return (
+    <div data-testid="best-items" style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <thead>
+          <tr style={{ color: 'var(--sub)', textAlign: 'right' }}>
+            <th style={{ textAlign: 'left', padding: '0 6px 6px 0', fontWeight: 600 }}>Item</th>
+            {diffs.map((d) => (
+              <th key={d} style={{ padding: '0 6px 6px', fontWeight: 600, whiteSpace: 'nowrap' }}>{diffLabel(d)}</th>
+            ))}
+            <th style={{ padding: '0 0 6px 6px', fontWeight: 600 }}>Best</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((item, i) => (
+            <tr key={item.item_id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: '5px 6px 5px 0', maxWidth: 280 }}>
+                <ItemLabel
+                  itemId={item.item_id} name={item.item_name} ilvl={item.ilvl} stats={item.stats}
+                  source={item.source} color={qualityColor(i)} bold={i < 3} meta={meta[item.item_id]}
+                />
+              </td>
+              {diffs.map((d) => (
+                <td key={d} style={{
+                  padding: '5px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+                  color: d === item.difficulty ? 'var(--text)' : 'var(--sub)',
+                  fontWeight: d === item.difficulty ? 600 : 400,
+                }}>
+                  {item.byDiff[d] != null ? `+${fmtGain(item.byDiff[d])}` : '—'}
+                </td>
+              ))}
+              <td style={{ padding: '5px 0 5px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: qualityColor(i), fontWeight: 700, whiteSpace: 'nowrap' }}>
+                +{fmtGain(item.gain)} {metric}
+                {item.pct != null && <div style={{ fontSize: 10, color: 'var(--sub)', fontWeight: 400 }}>+{item.pct.toFixed(2)}%</div>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {items.length > 20 && (
+        <button type="button" className="pill" onClick={() => setShowAll((v) => !v)} style={{ marginTop: 6 }}>
+          {showAll ? 'Show top 20' : `Show all ${items.length}`}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function FarmView({ items, metric }: { items: BestItem[]; metric: string }): JSX.Element {
+  const meta = useItemMeta(items.map((i) => i.item_id))
+  const spots = farmSummary(items, (id) => meta[id]?.source)
+  const max = spots[0]?.total ?? 1
+
+  if (spots.length === 0) {
+    return <div style={{ fontSize: 12, color: 'var(--sub)' }}>No upgrades in these results.</div>
+  }
+
+  return (
+    <div data-testid="farm-view" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 11, color: 'var(--sub)', marginBottom: 2 }}>
+        Where your upgrades drop, ranked by the total {metric.toUpperCase()} on offer (each item counted at its best difficulty).
+      </div>
+      {spots.map((spot, i) => (
+        <div key={spot.source} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 200, flexShrink: 0, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: i < 3 ? 700 : 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={spot.source}>
+              {spot.source}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--sub)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {spot.upgrades} upgrade{spot.upgrades !== 1 ? 's' : ''} · top: {(spot.top.item_name ?? meta[spot.top.item_id]?.name ?? `Item #${spot.top.item_id}`).replace(/_/g, ' ')}
+            </div>
+          </div>
+          <div style={{ flex: 1, height: 10, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{
+              width: `${Math.max(3, (spot.total / max) * 100)}%`, height: '100%', borderRadius: 3,
+              background: `linear-gradient(90deg, ${qualityColor(i)}99, ${qualityColor(i)})`,
+            }} />
+          </div>
+          <div style={{ width: 110, textAlign: 'right', fontSize: 11, fontVariantNumeric: 'tabular-nums', color: i === 0 ? qualityColor(0) : 'var(--sub)', fontWeight: i === 0 ? 700 : 400 }}>
+            +{fmtGain(spot.total)} total
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -507,25 +635,39 @@ function useCopyFlash(): [string | null, (key: string, text: string) => void] {
 
 // ── Character section (collapsible + draggable) ───────────────────────────────
 
+type CharView = 'cards' | 'best' | 'farm' | 'history'
+
+const VIEW_LABELS: Record<CharView, string> = {
+  cards: 'By difficulty',
+  best: 'Best items',
+  farm: 'Where to farm',
+  history: 'History',
+}
+
 interface CharacterSectionProps {
   charId: string
   charName: string
   specMap: Map<string, ActiveJob[]>
   specOrder: string[]
+  view: CharView
+  gearChangedAt: Record<string, number | null | undefined>
+  canRerun: boolean
   isDragOver: boolean
   isDragging: boolean
+  onViewChange: (v: CharView) => void
   onDragStart: (e: React.DragEvent) => void
   onDragOver: (e: React.DragEvent) => void
   onDrop: (e: React.DragEvent) => void
   onDragEnd: () => void
   onDeleteJob: (job: ActiveJob) => void
+  onRerun: (charIds: string[], difficulties: string[]) => void
 }
 
 function CharacterSection({
-  charName, specMap, specOrder,
-  isDragOver, isDragging,
+  charName, specMap, specOrder, view, gearChangedAt, canRerun,
+  isDragOver, isDragging, onViewChange,
   onDragStart, onDragOver, onDrop, onDragEnd,
-  onDeleteJob,
+  onDeleteJob, onRerun,
 }: CharacterSectionProps): JSX.Element {
   const [collapsed, setCollapsed] = useState(false)
   const [headerHovered, setHeaderHovered] = useState(false)
@@ -537,14 +679,20 @@ function CharacterSection({
   const linkCount = exportableLinks(allJobs).length
   const hue = nameToHue(charName)
   const charAccent = `hsl(${hue}, 60%, 62%)`
+  const metric = metricFor(allJobs)
+  const best = view === 'best' || view === 'farm' ? bestItems(allJobs) : []
+
+  // Re-run everything shown for this character: its specs × the difficulties it has results for.
+  const rerunIds = [...new Set(allJobs.map((j) => j.char_id).filter(Boolean))]
+  const rerunDiffs = [...new Set(allJobs.map((j) => j.difficulty).filter((d) => d && d !== 'all'))]
+  // QE jobs record difficulty "all"; re-running a healer means re-running its raid passes.
+  if (rerunDiffs.length === 0 && allJobs.some((j) => j.difficulty === 'all')) rerunDiffs.push('raid-heroic', 'raid-mythic')
 
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
+      data-testid="character-section"
       onDragOver={onDragOver}
       onDrop={onDrop}
-      onDragEnd={onDragEnd}
       style={{
         marginBottom: 10,
         background: 'var(--surf)',
@@ -557,44 +705,37 @@ function CharacterSection({
         boxShadow: isDragOver ? `0 0 0 1px ${charAccent}` : 'none',
       }}
     >
-      {/* Header */}
+      {/* Header — only the header drags, so text in the body stays selectable */}
       <div
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '8px 12px',
-          cursor: 'grab',
-          borderBottom: collapsed ? 'none' : '1px solid var(--border)',
-          userSelect: 'none',
+          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'grab',
+          borderBottom: collapsed ? 'none' : '1px solid var(--border)', userSelect: 'none',
         }}
         onMouseEnter={() => setHeaderHovered(true)}
         onMouseLeave={() => setHeaderHovered(false)}
       >
-        {/* Drag handle */}
-        <span style={{
-          fontSize: 13,
-          color: headerHovered ? 'var(--sub)' : 'transparent',
-          flexShrink: 0,
-          transition: 'color 0.15s',
-          lineHeight: 1,
-          cursor: 'grab',
+        <span aria-hidden style={{
+          fontSize: 13, color: headerHovered ? 'var(--sub)' : 'transparent', flexShrink: 0,
+          transition: 'color 0.15s', lineHeight: 1, cursor: 'grab',
         }}>
           ⠿
         </span>
 
-        {/* Collapse toggle */}
-        <div
-          style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer' }}
+        <button
+          type="button"
+          aria-expanded={!collapsed}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer',
+            background: 'none', border: 'none', padding: 0, textAlign: 'left', color: 'inherit',
+          }}
           onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v) }}
         >
           <span style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: charAccent,
-            flex: 1,
-            fontFamily: 'var(--font-display)',
-            letterSpacing: '0.03em',
+            fontSize: 13, fontWeight: 700, color: charAccent, flex: 1,
+            fontFamily: 'var(--font-display)', letterSpacing: '0.03em',
           }}>
             {charName}
           </span>
@@ -602,33 +743,32 @@ function CharacterSection({
             {specMap.size} spec{specMap.size !== 1 ? 's' : ''} · {doneCount}/{allJobs.length} done
           </span>
           <span style={{
-            fontSize: 10,
-            color: 'var(--sub)',
-            opacity: 0.7,
-            transition: 'transform 0.2s',
-            display: 'inline-block',
-            transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+            fontSize: 10, color: 'var(--sub)', opacity: 0.7, transition: 'transform 0.2s',
+            display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
           }}>
             ▼
           </span>
-        </div>
+        </button>
 
-        {/* Copy this character's Raidbots links */}
+        {canRerun && rerunIds.length > 0 && rerunDiffs.length > 0 && (headerHovered) && (
+          <button
+            type="button"
+            className="pill"
+            onClick={(e) => { e.stopPropagation(); onRerun(rerunIds, rerunDiffs) }}
+            title={`Re-run ${rerunDiffs.map(diffLabel).join(', ')} for ${charName}`}
+          >
+            ↻ Re-run all
+          </button>
+        )}
+
         {linkCount > 0 && (headerHovered || copied) && (
           <button
+            type="button"
+            className="pill"
+            data-ok={copied ? 'true' : undefined}
             onClick={(e) => { e.stopPropagation(); copy('char', formatLinkList(allJobs)) }}
             title={`Copy ${linkCount} Raidbots link${linkCount !== 1 ? 's' : ''}, one per line`}
-            style={{
-              background: 'none',
-              border: '1px solid var(--border)',
-              borderRadius: 10,
-              color: copied ? 'var(--green)' : 'var(--sub)',
-              fontSize: 10,
-              fontWeight: 600,
-              cursor: 'pointer',
-              padding: '2px 7px',
-              flexShrink: 0,
-            }}
+            style={{ background: 'none' }}
           >
             {copied ? 'Copied ✓' : `⧉ ${linkCount} link${linkCount !== 1 ? 's' : ''}`}
           </button>
@@ -637,10 +777,37 @@ function CharacterSection({
 
       {/* Body */}
       {!collapsed && (
-        <div style={{ padding: '10px 12px 4px' }}>
-          {specOrder.map((spec) => (
-            <SpecSection key={spec} spec={spec} jobs={specMap.get(spec)!} onDeleteJob={onDeleteJob} />
+        <div style={{ padding: '8px 12px 4px' }}>
+          <div role="tablist" aria-label={`${charName} results view`} style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
+            {(Object.keys(VIEW_LABELS) as CharView[]).map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={view === v}
+                className="pill"
+                data-active={view === v}
+                onClick={() => onViewChange(v)}
+              >
+                {VIEW_LABELS[v]}
+              </button>
+            ))}
+          </div>
+
+          {view === 'cards' && specOrder.map((spec) => (
+            <SpecSection
+              key={spec}
+              spec={spec}
+              jobs={specMap.get(spec)!}
+              gearChangedAt={gearChangedAt[specMap.get(spec)![0]?.char_id ?? '']}
+              canRerun={canRerun}
+              onDeleteJob={onDeleteJob}
+              onRerunJob={(job) => onRerun([job.char_id], [job.difficulty])}
+            />
           ))}
+          {view === 'best' && <div style={{ marginBottom: 10 }}><BestItemsTable items={best} metric={metric} /></div>}
+          {view === 'farm' && <div style={{ marginBottom: 10 }}><FarmView items={best} metric={metric} /></div>}
+          {view === 'history' && <div style={{ marginBottom: 10 }}><HistoryView charName={charName} metric={metric} /></div>}
         </div>
       )}
     </div>
@@ -653,32 +820,48 @@ type SortMode = 'recent' | 'az' | 'upgrades' | 'custom'
 
 interface Props {
   jobs: ActiveJob[]
+  characters?: Character[]
+  running?: boolean
+  onRerun?: (charIds: string[], difficulties: string[]) => void
 }
 
-export default function ResultsPanel({ jobs }: Props): JSX.Element {
+export default function ResultsPanel({ jobs, characters = [], running = false, onRerun }: Props): JSX.Element {
   const deleteJob = useJobStore((s) => s.deleteJob)
   const [diffFilter, setDiffFilter] = useState<Set<string>>(new Set())
+  const [search, setSearch] = useState('')
   const [copied, copy] = useCopyFlash()
+  const [view, setView] = useState<CharView>(() => {
+    const v = lsGet(LS_VIEW) as CharView | null
+    return v && v in VIEW_LABELS ? v : 'cards'
+  })
 
   const [customOrder, setCustomOrder] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(LS_CHAR_ORDER) ?? '[]') }
+    try { return JSON.parse(lsGet(LS_CHAR_ORDER) ?? '[]') }
     catch { return [] }
   })
 
   const [sortMode, setSortMode] = useState<SortMode>(() =>
-    localStorage.getItem(LS_CHAR_ORDER) ? 'custom' : 'recent'
+    lsGet(LS_CHAR_ORDER) ? 'custom' : 'recent'
   )
 
   const draggedIdRef = useRef<string | null>(null)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
 
-  const allDiffs = [...new Set(jobs.map((j) => j.difficulty))].sort((a, b) => {
-    const ai = DIFF_ORDER.indexOf(a); const bi = DIFF_ORDER.indexOf(b)
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
-  })
+  const gearChangedAt = Object.fromEntries(characters.map((c) => [c.id, c.simc_updated_at]))
 
-  const filtered = diffFilter.size === 0 ? jobs : jobs.filter((j) => diffFilter.has(j.difficulty))
+  const changeView = (v: CharView) => {
+    setView(v)
+    lsSet(LS_VIEW, v)
+  }
+
+  const allDiffs = [...new Set(jobs.map((j) => j.difficulty))].sort((a, b) => diffRank(a) - diffRank(b))
+
+  const q = search.trim().toLowerCase()
+  const filtered = jobs.filter((j) =>
+    (diffFilter.size === 0 || diffFilter.has(j.difficulty)) &&
+    (!q || j.char_name.toLowerCase().includes(q) || (j.spec ?? '').toLowerCase().includes(q)),
+  )
 
   const charOrder: string[] = []
   const byChar = new Map<string, { charName: string; bySpec: Map<string, ActiveJob[]> }>()
@@ -721,6 +904,7 @@ export default function ResultsPanel({ jobs }: Props): JSX.Element {
   }
 
   function handleDragOver(charId: string, e: React.DragEvent) {
+    if (!draggedIdRef.current) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     if (draggedIdRef.current !== charId) setDragOverId(charId)
@@ -742,7 +926,7 @@ export default function ResultsPanel({ jobs }: Props): JSX.Element {
     next.splice(to, 0, sourceId)
     setCustomOrder(next)
     setSortMode('custom')
-    localStorage.setItem(LS_CHAR_ORDER, JSON.stringify(next))
+    lsSet(LS_CHAR_ORDER, JSON.stringify(next))
     setDragOverId(null)
     setDraggedId(null)
     draggedIdRef.current = null
@@ -757,7 +941,7 @@ export default function ResultsPanel({ jobs }: Props): JSX.Element {
   function clearCustomOrder() {
     setCustomOrder([])
     setSortMode('recent')
-    localStorage.removeItem(LS_CHAR_ORDER)
+    lsSet(LS_CHAR_ORDER, null)
   }
 
   function toggleDiff(diff: string) {
@@ -777,155 +961,82 @@ export default function ResultsPanel({ jobs }: Props): JSX.Element {
     )
   })
   const linkCount = exportableLinks(orderedJobs).length
+  const charCount = new Set(jobs.map((j) => j.char_name)).size
 
-  const showControls = allDiffs.length > 1 || byChar.size > 1 || linkCount > 0
+  const showControls = allDiffs.length > 1 || charCount > 1 || linkCount > 0
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
       {/* Controls bar */}
       {showControls && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          padding: '0 0 8px',
-          flexShrink: 0,
-          flexWrap: 'wrap',
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 0 8px', flexShrink: 0, flexWrap: 'wrap' }}>
+          {charCount > 3 && (
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Find character…"
+              aria-label="Filter results by character or spec"
+              style={{
+                fontSize: 11, padding: '3px 8px', borderRadius: 10, width: 140,
+                border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--text)',
+                outline: 'none', userSelect: 'text',
+              }}
+            />
+          )}
+
           {allDiffs.length > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-              <span style={{
-                fontSize: 10,
-                color: 'var(--sub)',
-                fontWeight: 700,
-                letterSpacing: '0.06em',
-                fontFamily: 'var(--font-display)',
-              }}>
-                FILTER
-              </span>
-              {allDiffs.map((diff) => {
-                const active = diffFilter.has(diff)
-                return (
-                  <button key={diff} onClick={() => toggleDiff(diff)} style={{
-                    padding: '2px 8px',
-                    borderRadius: 10,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.12s',
-                    border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
-                    background: active ? 'var(--accent)' : 'var(--surf2)',
-                    color: active ? '#fff' : 'var(--sub)',
-                  }}>
-                    {DIFF_LABELS[diff] ?? diff}
-                  </button>
-                )
-              })}
+              <span className="section-label">FILTER</span>
+              {allDiffs.map((diff) => (
+                <button key={diff} type="button" className="pill" data-active={diffFilter.has(diff)} onClick={() => toggleDiff(diff)}>
+                  {DIFF_LABELS[diff] ?? diff}
+                </button>
+              ))}
               {diffFilter.size > 0 && (
-                <button onClick={() => setDiffFilter(new Set())} style={{
-                  padding: '2px 8px',
-                  borderRadius: 10,
-                  fontSize: 11,
-                  cursor: 'pointer',
-                  border: '1px solid var(--border)',
-                  background: 'none',
-                  color: 'var(--sub)',
-                }}>✕</button>
+                <button type="button" className="pill" aria-label="Clear filter" onClick={() => setDiffFilter(new Set())} style={{ background: 'none' }}>✕</button>
               )}
             </div>
           )}
 
           {linkCount > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
-              <span style={{
-                fontSize: 10,
-                color: 'var(--sub)',
-                fontWeight: 700,
-                letterSpacing: '0.06em',
-                fontFamily: 'var(--font-display)',
-              }}>
-                EXPORT
-              </span>
+              <span className="section-label">EXPORT</span>
               <button
+                type="button"
+                className="pill"
+                data-ok={copied === 'links' ? 'true' : undefined}
                 onClick={() => copy('links', formatLinkList(orderedJobs))}
                 title={`Copy ${linkCount} Raidbots report link${linkCount !== 1 ? 's' : ''}, one per line — paste into a bulk droptimizer importer`}
-                style={{
-                  padding: '2px 8px',
-                  borderRadius: 10,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: `1px solid ${copied === 'links' ? 'var(--green)' : 'var(--border)'}`,
-                  background: 'var(--surf2)',
-                  color: copied === 'links' ? 'var(--green)' : 'var(--sub)',
-                }}
               >
                 {copied === 'links' ? 'Copied ✓' : `⧉ ${linkCount} link${linkCount !== 1 ? 's' : ''}`}
               </button>
               <button
+                type="button"
+                className="pill"
+                data-ok={copied === 'discord' ? 'true' : undefined}
                 onClick={() => copy('discord', formatDiscordMessage(orderedJobs, DIFF_LABELS))}
                 title="Copy the same links with character / spec / difficulty labels, ready to post in Discord"
-                style={{
-                  padding: '2px 8px',
-                  borderRadius: 10,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: `1px solid ${copied === 'discord' ? 'var(--green)' : 'var(--border)'}`,
-                  background: 'var(--surf2)',
-                  color: copied === 'discord' ? 'var(--green)' : 'var(--sub)',
-                }}
               >
                 {copied === 'discord' ? 'Copied ✓' : '⧉ Discord'}
               </button>
             </div>
           )}
 
-          {byChar.size > 1 && (
+          {charCount > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: linkCount > 0 ? 0 : 'auto' }}>
-              <span style={{
-                fontSize: 10,
-                color: 'var(--sub)',
-                fontWeight: 700,
-                letterSpacing: '0.06em',
-                fontFamily: 'var(--font-display)',
-              }}>
-                SORT
-              </span>
+              <span className="section-label">SORT</span>
               {(['recent', 'az', 'upgrades'] as SortMode[]).map((mode) => {
                 const label = mode === 'recent' ? 'Recent' : mode === 'az' ? 'A→Z' : 'Upgrades'
-                const active = sortMode === mode
                 return (
-                  <button key={mode} onClick={() => setSortMode(mode)} style={{
-                    padding: '2px 8px',
-                    borderRadius: 10,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.12s',
-                    border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
-                    background: active ? 'var(--accent)' : 'var(--surf2)',
-                    color: active ? '#fff' : 'var(--sub)',
-                  }}>
+                  <button key={mode} type="button" className="pill" data-active={sortMode === mode} onClick={() => setSortMode(mode)}>
                     {label}
                   </button>
                 )
               })}
               {sortMode === 'custom' && (
-                <button onClick={clearCustomOrder} style={{
-                  padding: '2px 8px',
-                  borderRadius: 10,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: '1px solid var(--accent)',
-                  background: 'var(--accent)',
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}>
+                <button type="button" className="pill" data-active onClick={clearCustomOrder} title="Clear the dragged order">
                   Custom ✕
                 </button>
               )}
@@ -951,6 +1062,10 @@ export default function ResultsPanel({ jobs }: Props): JSX.Element {
                 charName={charName}
                 specMap={bySpec}
                 specOrder={specOrder}
+                view={view}
+                gearChangedAt={gearChangedAt}
+                canRerun={!!onRerun && !running}
+                onViewChange={changeView}
                 isDragging={draggedId === charId}
                 isDragOver={dragOverId === charId}
                 onDragStart={(e) => handleDragStart(charId, e)}
@@ -958,6 +1073,7 @@ export default function ResultsPanel({ jobs }: Props): JSX.Element {
                 onDrop={(e) => handleDrop(charId, e)}
                 onDragEnd={handleDragEnd}
                 onDeleteJob={(job) => deleteJob(job.job_id, job.char_id, job.difficulty, job.build_label, job.char_name, job.spec ?? '')}
+                onRerun={(ids, diffs) => onRerun?.(ids, diffs)}
               />
             )
           })

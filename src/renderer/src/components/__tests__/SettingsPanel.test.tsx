@@ -26,7 +26,7 @@ describe('SettingsPanel', () => {
 
   it('pre-fills raidsid from prop', () => {
     render(<SettingsPanel open={true} raidsid="existing-sid" wow_path="" onClose={vi.fn()} />)
-    expect((screen.getByLabelText('Raidbots Session ID') as HTMLInputElement).value).toBe('existing-sid')
+    expect(((fireEvent.click(screen.getByText(/Paste the raidsid cookie/)), screen.getByLabelText('Raidbots Session ID')) as HTMLInputElement).value).toBe('existing-sid')
   })
 
   it('calls onClose when cancel is clicked', () => {
@@ -39,7 +39,7 @@ describe('SettingsPanel', () => {
   it('calls saveSettings on submit', async () => {
     const onClose = vi.fn()
     render(<SettingsPanel open={true} raidsid="" wow_path="" onClose={onClose} />)
-    fireEvent.change(screen.getByLabelText('Raidbots Session ID'), {
+    fireEvent.change((fireEvent.click(screen.getByText(/Paste the raidsid cookie/)), screen.getByLabelText('Raidbots Session ID')), {
       target: { value: 'new-sid' },
     })
     fireEvent.click(screen.getByText('Save'))

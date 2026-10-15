@@ -19,6 +19,17 @@ const api: ElectronAPI = {
   // Sim
   startSim: (selections) => ipcRenderer.invoke('startSim', selections),
   cancelJobs: () => ipcRenderer.invoke('cancelJobs'),
+  cancelJob: (job_id) => ipcRenderer.invoke('cancelJob', job_id),
+  checkRaidbotsSession: (raidsid) => ipcRenderer.invoke('checkRaidbotsSession', raidsid),
+  loginRaidbots: () => ipcRenderer.invoke('loginRaidbots'),
+  getSimHistory: (char_name) => ipcRenderer.invoke('getSimHistory', char_name),
+  exportResultsJson: () => ipcRenderer.invoke('exportResultsJson'),
+  browseWowPath: () => ipcRenderer.invoke('browseWowPath'),
+  onLuaWritten: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: any) => callback(info)
+    ipcRenderer.on('lua:written', handler)
+    return () => ipcRenderer.off('lua:written', handler)
+  },
   exportLua: () => ipcRenderer.invoke('exportLua'),
 
   // Playwright

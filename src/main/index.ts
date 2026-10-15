@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, shell, net } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, net, dialog, session } from 'electron'
+import { writeFileSync } from 'fs'
 import { join } from 'path'
 import Store from 'electron-store'
-import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, deleteTooltipRowsByCharSpecDiff, getJobResults, upsertJobResult, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, migrateTooltipData, type ItemData } from './db'
+import { initDb, getCharacters, upsertCharacter, deleteCharacter, getAllTooltipData, upsertTooltipRows, deleteTooltipRowsByCharSpecDiff, getJobResults, upsertJobResult, deleteJobResult, getCachedItemNames, upsertItemNames, migrateItemNames, migrateTooltipData, migrateCharacters, insertSimHistory, getSimHistory, type ItemData } from './db'
 import { buildLua, writeLuaFile, resolveAddonDataPath } from './lua-export'
-import { spawnWorker, cancelAllWorkers, findPython, getWorkerPath, type JobSpec } from './sim-runner'
+import { spawnWorker, cancelAllWorkers, cancelWorker, findPython, getWorkerPath, type JobSpec } from './sim-runner'
 import { createTray, destroyTray } from './tray'
 import { setupAutoUpdater, checkForUpdatesNow } from './updater'
 import { autoUpdater } from 'electron-updater'
@@ -11,7 +12,7 @@ import { createTriggerWindow, showTriggerWindow, hideTriggerWindow, destroyTrigg
 import { destroyQeWindow, runQeSim } from './qe-browser'
 import { extractReportId, fetchQeReport } from './qe-import'
 import { startWatcher, stopWatcher } from './simc-watcher'
-import type { Character, Settings, SimSelection } from '../shared/ipc'
+import type { Character, Settings, SimSelection, RaidbotsSessionStatus } from '../shared/ipc'
 
 interface StoreSchema {
   raidsid: string
@@ -62,6 +63,106 @@ function extractWowheadSource(html: string): string | null {
     if (m) return m[1].trim().replace(/\s+/g, ' ')
   }
   return null
+}
+
+/**
+ * Rewrite SimdragosaData.lua from the whole tooltip table and tell the
+ * renderer, so it can show when the addon data was last refreshed.
+ * A no-op without a WoW folder.
+ */
+function refreshLua(): string | null {
+  const wow_path = store.get('wow_path')
+  if (!wow_path) return null
+  writeLuaFile(buildLua(getAllTooltipData(db)), wow_path)
+  const path = resolveAddonDataPath(wow_path)
+  mainWindow?.webContents.send('lua:written', { path, at: Date.now() })
+  return path
+}
+
+const RAIDBOTS_ME = 'https://www.raidbots.com/api/me'
+
+/**
+ * Ask Raidbots who a raidsid belongs to.  `{"user":null}` means the cookie is
+ * missing or expired.  A network failure is reported as an error with no
+ * `user` key, so callers can tell "Raidbots says no" from "could not ask".
+ */
+async function checkRaidbotsSession(raidsid: string): Promise<RaidbotsSessionStatus> {
+  if (!raidsid) return { ok: false, user: null, error: 'No Raidbots session set.' }
+  try {
+    // Node's fetch, not net.fetch: net.fetch would merge in the default
+    // session's cookie jar instead of sending exactly this raidsid.
+    const res = await fetch(RAIDBOTS_ME, {
+      headers: { Cookie: `raidsid=${raidsid}`, 'User-Agent': 'Mozilla/5.0 Simdragosa' },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!res.ok) return { ok: false, error: `Raidbots returned HTTP ${res.status}` }
+    const body = await res.json() as { user?: Record<string, unknown> | null }
+    if (!body.user) return { ok: false, user: null }
+    const u = body.user
+    const name = [u.name, u.username, u.displayName, u.battletag]
+      .find((v) => typeof v === 'string') as string | undefined
+    return { ok: true, user: name ?? null }
+  } catch (err) {
+    return { ok: false, error: `Could not reach Raidbots: ${err instanceof Error ? err.message : String(err)}` }
+  }
+}
+
+/**
+ * Open Raidbots' sign-in page in its own window and capture the raidsid
+ * cookie once it belongs to a signed-in account.  Resolves when that happens
+ * or when the user closes the window.
+ */
+function loginRaidbots(): Promise<RaidbotsSessionStatus> {
+  return new Promise((resolve) => {
+    // In-memory partition: every sign-in starts clean and nothing lingers.
+    const ses = session.fromPartition('raidbots-login')
+    const win = new BrowserWindow({
+      width: 960,
+      height: 780,
+      parent: mainWindow ?? undefined,
+      title: 'Sign in to Raidbots',
+      autoHideMenuBar: true,
+      webPreferences: { session: ses, sandbox: true, contextIsolation: true },
+    })
+    let settled = false
+    let checking = false
+
+    const tryCookie = async (): Promise<void> => {
+      if (settled || checking) return
+      checking = true
+      try {
+        const [cookie] = await ses.cookies.get({ name: 'raidsid' })
+        if (!cookie?.value) return
+        // Raidbots may hand out a raidsid before sign-in too; only a cookie
+        // the API maps to an account is worth keeping.
+        const status = await checkRaidbotsSession(cookie.value)
+        if (status.ok && !settled) {
+          settled = true
+          store.set('raidsid', cookie.value)
+          resolve({ ...status, raidsid: cookie.value })
+          win.close()
+        }
+      } finally {
+        checking = false
+      }
+    }
+
+    const onCookie = (_e: Electron.Event, cookie: Electron.Cookie, _cause: string, removed: boolean): void => {
+      if (!removed && cookie.name === 'raidsid') tryCookie()
+    }
+    ses.cookies.on('changed', onCookie)
+    win.webContents.on('did-navigate', () => tryCookie())
+    win.webContents.on('did-navigate-in-page', () => tryCookie())
+    win.on('closed', () => {
+      ses.cookies.off('changed', onCookie)
+      if (!settled) {
+        settled = true
+        resolve({ ok: false, error: 'Sign-in window closed before signing in.' })
+      }
+      ses.clearStorageData().catch(() => {})
+    })
+    win.loadURL('https://www.raidbots.com/auth')
+  })
 }
 
 function createWindow(): void {
@@ -200,13 +301,10 @@ async function runQeJob(
       const key = `${charId}|${difficulty}|QE Auto`
       const record = { job_id: `${job_id}-${difficulty}`, char_id: charId, char_name: data.char_name, spec: data.spec, difficulty, build_label: 'QE Auto', url, status: 'done', dps_gains: gains, ended_at: Date.now() }
       upsertJobResult(db, key, record as any, record as any)
+      try { insertSimHistory(db, record) } catch (_) {}
     }
 
-    const wow_path = store.get('wow_path')
-    if (wow_path) {
-      const allRows = getAllTooltipData(db)
-      writeLuaFile(buildLua(allRows), wow_path)
-    }
+    refreshLua()
 
     const allGains = Object.values(data.by_difficulty).flat()
     win.webContents.send('job:done', { job_id, url: data.url, dps_gains: allGains })
@@ -300,11 +398,7 @@ function registerIpcHandlers(): void {
       }
       if (Object.keys(fetched).length > 0) {
         upsertItemNames(db, fetched)
-        const wow_path = store.get('wow_path')
-        if (wow_path) {
-          const allRows = getAllTooltipData(db)
-          writeLuaFile(buildLua(allRows), wow_path)
-        }
+        refreshLua()
       }
       return { ...cached, ...fetched }
     }
@@ -324,11 +418,7 @@ function registerIpcHandlers(): void {
     deleteJobResult(db, `${char_id}|${difficulty}|${build_label}`)
     if (char_name && spec) {
       deleteTooltipRowsByCharSpecDiff(db, char_name, spec, difficulty)
-      const wow_path = store.get('wow_path')
-      if (wow_path) {
-        const allRows = getAllTooltipData(db)
-        writeLuaFile(buildLua(allRows), wow_path)
-      }
+      refreshLua()
     }
   })
 
@@ -337,6 +427,18 @@ function registerIpcHandlers(): void {
     const raidsid = store.get('raidsid')
     if (!raidsid) throw new Error('No raidsid configured')
     const characters = getCharacters(db)
+    // Fail the whole batch up front when Raidbots says the session is gone,
+    // instead of every job erroring one by one.  Healers (QE) do not need it.
+    const needsRaidbots = selection.character_ids.some((id) => {
+      const c = characters.find((x) => x.id === id)
+      return c && !HEALER_SPEC_IDS.has(c.spec_id)
+    })
+    if (needsRaidbots) {
+      const status = await checkRaidbotsSession(raidsid)
+      if (!status.ok && status.user === null) {
+        throw new Error('Your Raidbots session has expired. Open Settings and sign in to Raidbots again.')
+      }
+    }
     const charMap = new Map(characters.map((c) => [c.id, c]))
 
     const queued: Array<{ job_id: string; char_id: string; char_name: string; spec: string; difficulty: string; build_label: string }> = []
@@ -395,11 +497,7 @@ function registerIpcHandlers(): void {
           if (rows.length > 0) {
             deleteTooltipRowsByCharSpecDiff(db, charName, specName, difficulty)
             upsertTooltipRows(db, rows)
-            const wow_path = store.get('wow_path')
-            if (wow_path) {
-              const allRows = getAllTooltipData(db)
-              writeLuaFile(buildLua(allRows), wow_path)
-            }
+            refreshLua()
           }
         })
       }
@@ -408,6 +506,67 @@ function registerIpcHandlers(): void {
     return queued
   })
   ipcMain.handle('cancelJobs', () => cancelAllWorkers())
+  ipcMain.handle('cancelJob', (_event, jobId: string) => cancelWorker(jobId))
+
+  // Raidbots session
+  ipcMain.handle('checkRaidbotsSession', (_event, raidsid?: string) =>
+    checkRaidbotsSession(raidsid ?? store.get('raidsid')))
+  ipcMain.handle('loginRaidbots', () => loginRaidbots())
+
+  ipcMain.handle('getSimHistory', (_event, charName?: string) => getSimHistory(db, charName))
+
+  ipcMain.handle('browseWowPath', async () => {
+    const opts: Electron.OpenDialogOptions = {
+      title: 'Select your World of Warcraft _retail_ folder',
+      properties: ['openDirectory'],
+    }
+    const res = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts)
+    return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0]
+  })
+
+  // Shareable JSON of every character's latest successful results
+  ipcMain.handle('exportResultsJson', async () => {
+    const opts: Electron.SaveDialogOptions = {
+      title: 'Export sim results',
+      defaultPath: `simdragosa-results-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    }
+    const res = mainWindow ? await dialog.showSaveDialog(mainWindow, opts) : await dialog.showSaveDialog(opts)
+    if (res.canceled || !res.filePath) return { ok: false }
+    try {
+      const jobs = getJobResults(db)
+        .map((r) => r.last_success_job ?? r.latest_job)
+        .filter((j: any) => j && j.status === 'done' && j.char_name)
+      const ids = [...new Set(jobs.flatMap((j: any) => (j.dps_gains ?? []).map((g: any) => g.item_id)))] as number[]
+      const names = getCachedItemNames(db, ids)
+      const payload = {
+        generated: new Date().toISOString(),
+        app_version: app.getVersion(),
+        results: jobs.map((j: any) => ({
+          character: j.char_name,
+          spec: j.spec ?? null,
+          difficulty: j.difficulty,
+          report: j.url ?? null,
+          simmed_at: j.ended_at ? new Date(j.ended_at).toISOString() : null,
+          items: [...(j.dps_gains ?? [])]
+            .sort((a: any, b: any) => b.dps_gain - a.dps_gain)
+            .map((g: any) => ({
+              item_id: g.item_id,
+              name: g.item_name ?? names[g.item_id]?.name ?? null,
+              ilvl: g.ilvl ?? null,
+              gain: g.dps_gain,
+              pct: g.pct ?? null,
+              source: g.zone_name ?? names[g.item_id]?.source ?? null,
+              stats: g.stats ?? null,
+            })),
+        })),
+      }
+      writeFileSync(res.filePath, JSON.stringify(payload, null, 2), 'utf-8')
+      return { ok: true, path: res.filePath }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
   ipcMain.handle('checkForUpdates', () => checkForUpdatesNow())
   ipcMain.on('update:restart', () => { autoUpdater.quitAndInstall() })
 
@@ -443,10 +602,7 @@ function registerIpcHandlers(): void {
     const wow_path = store.get('wow_path')
     if (!wow_path) return { ok: false, error: 'No WoW folder configured in Settings.' }
     try {
-      const rows = getAllTooltipData(db)
-      const lua = buildLua(rows)
-      writeLuaFile(lua, wow_path)
-      return { ok: true, path: resolveAddonDataPath(wow_path) }
+      return { ok: true, path: refreshLua() ?? resolveAddonDataPath(wow_path) }
     } catch (err: any) {
       return { ok: false, error: String(err?.message ?? err) }
     }
@@ -498,13 +654,10 @@ function registerIpcHandlers(): void {
         ended_at: Date.now(),
       }
       upsertJobResult(db, key, record, record)
+      try { insertSimHistory(db, record) } catch (_) {}
     }
 
-    const wow_path = store.get('wow_path')
-    if (wow_path) {
-      const allRows = getAllTooltipData(db)
-      writeLuaFile(buildLua(allRows), wow_path)
-    }
+    refreshLua()
 
     return {
       char_name: data.char_name,
@@ -633,6 +786,7 @@ app.whenReady().then(() => {
   db = initDb(join(app.getPath('userData'), 'simdragosa.db'))
   migrateItemNames(db)
   migrateTooltipData(db)
+  migrateCharacters(db)
   registerIpcHandlers()
   registerTriggerIpc()
   createWindow()

@@ -272,6 +272,15 @@ def test_parsed_rows_start_without_a_stat_combination():
     assert gains[0]["stats"] is None
 
 
+def test_parsed_rows_carry_gain_as_percent_of_baseline():
+    """The app shows % next to the raw gain; 2400 on a 100k baseline is 2.4%."""
+    import worker
+    gains = worker._parse_tooltip_data(_report([
+        {"name": "-88/-39/professionMidnightEpic-331/910001/331/0/chest///", "mean": 102400.0},
+    ]))
+    assert gains[0]["pct"] == 2.4
+
+
 # ---------------------------------------------------------------------------
 # The stat sweep: one sim per pairing, best result per item wins
 # ---------------------------------------------------------------------------

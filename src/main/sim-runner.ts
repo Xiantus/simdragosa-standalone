@@ -9,7 +9,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import type { BrowserWindow } from 'electron'
 import type { Character, JobUpdate, JobDone, JobError, SimSelection } from '../shared/ipc'
-import { upsertJobResult } from './db'
+import { upsertJobResult, insertSimHistory } from './db'
 
 export interface JobSpec {
   type: 'raidbots' | 'qe'
@@ -24,6 +24,8 @@ export interface JobSpec {
 }
 
 const activeWorkers = new Map<string, ChildProcess>()
+// Jobs the user cancelled — their non-zero exit is expected, not an error.
+const cancelledJobs = new Set<string>()
 
 export function findPython(): string {
   if (process.platform === 'darwin') {
@@ -163,6 +165,7 @@ export function spawnWorker(
 
   proc.on('close', (code) => {
     activeWorkers.delete(spec.job_id)
+    if (cancelledJobs.delete(spec.job_id)) return
     // If exited non-zero and we never received a done/error event, emit error
     if (code !== 0 && !receivedDoneOrError && win && !win.isDestroyed()) {
       const detail = stderrLog.trim()
@@ -217,6 +220,7 @@ function handleWorkerEvent(
       ended_at: Date.now(),
     }
     try { upsertJobResult(db, key, record, record) } catch (_) {}
+    try { insertSimHistory(db, record) } catch (_) {}
     if (onDone) onDone(event.dps_gains ?? [], spec.character.name, spec.character.spec, spec.difficulty)
 
   } else if (event.type === 'error') {
@@ -227,10 +231,34 @@ function handleWorkerEvent(
     win.webContents.send('job:error', err)
     // Persist failed result
     const key = `${spec.character.id}|${spec.difficulty}|${spec.build_label}`
+    // Carry the same metadata as a success record: without char_name/char_id
+    // the renderer drops the row on reload, and a null last_success_job would
+    // wipe out the previous good result (upsertJobResult keeps it now).
     try {
-      upsertJobResult(db, key, { job_id: spec.job_id, status: 'error', message: event.message }, null)
+      upsertJobResult(db, key, {
+        job_id: spec.job_id,
+        char_id: spec.character.id,
+        char_name: spec.character.name,
+        spec: spec.character.spec,
+        difficulty: spec.difficulty,
+        build_label: spec.build_label,
+        status: 'error',
+        error_message: event.message,
+        ended_at: Date.now(),
+      }, null)
     } catch (_) {}
   }
+}
+
+/** Kill one job's worker.  Returns false when it was not running. */
+export function cancelWorker(jobId: string): boolean {
+  const proc = activeWorkers.get(jobId)
+  if (!proc) return false
+  // Drop it first so the close handler does not report an error for it.
+  activeWorkers.delete(jobId)
+  cancelledJobs.add(jobId)
+  try { proc.kill('SIGTERM') } catch (_) {}
+  return true
 }
 
 export function cancelAllWorkers(): void {

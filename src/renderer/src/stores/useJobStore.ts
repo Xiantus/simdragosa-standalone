@@ -23,6 +23,7 @@ interface JobState {
   running: boolean
   startSim: (selection: SimSelection) => Promise<void>
   cancelJobs: () => Promise<void>
+  cancelJob: (job_id: string) => Promise<void>
   deleteJob: (job_id: string, char_id: string, difficulty: string, build_label: string, char_name: string, spec: string) => Promise<void>
   handleJobUpdate: (update: JobUpdate) => void
   handleJobDone: (done: JobDone) => void
@@ -78,9 +79,23 @@ export const useJobStore = create<JobState>((set, get) => ({
     }))
   },
 
+  cancelJob: async (job_id) => {
+    await window.api.cancelJob(job_id)
+    set((state) => {
+      const jobs = state.jobs.map((j) =>
+        j.job_id === job_id && isActive(j.status)
+          ? { ...j, status: 'cancelled' as Job['status'], ended_at: Date.now() }
+          : j
+      )
+      return { jobs, running: jobs.some((j) => isActive(j.status)) }
+    })
+  },
+
   handleJobUpdate: (update) => {
     set((state) => {
       const exists = state.jobs.find((j) => j.job_id === update.job_id)
+      // A cancelled worker can still flush a line or two before it dies.
+      if (exists?.status === 'cancelled') return state
       const jobs = exists
         ? state.jobs.map((j) =>
             j.job_id === update.job_id

@@ -12,6 +12,8 @@ import {
   getAllTooltipData,
   upsertJobResult,
   getJobResults,
+  insertSimHistory,
+  getSimHistory,
 } from './db'
 
 let db: Database.Database
@@ -163,5 +165,58 @@ describe('job_results', () => {
     expect(results[0].key).toBe(key)
     expect(results[0].latest_job.job_id).toBe('abc-123')
     expect(results[0].last_success_job.url).toBe('https://raidbots.com/abc')
+  })
+})
+
+
+describe('job results keep the last success', () => {
+  test('an error after a success does not wipe the success', () => {
+    const ok = { job_id: 'j1', status: 'done', dps_gains: [{ item_id: 1, dps_gain: 5 }] }
+    upsertJobResult(db, 'k', ok, ok)
+    upsertJobResult(db, 'k', { job_id: 'j2', status: 'error' }, null)
+    const [row] = getJobResults(db)
+    expect(row.latest_job.status).toBe('error')
+    expect(row.last_success_job.job_id).toBe('j1')
+  })
+})
+
+describe('gear change timestamp', () => {
+  const base = {
+    id: 'x-fire', name: 'X', realm: 'r', region: 'eu', spec: 'Fire', spec_id: 63,
+    loot_spec_id: 63, simc_string: 'head=,id=1', crafted_stats: '', exclude_from_item_updates: false,
+  }
+
+  test('is set on insert and only moves when the SimC string changes', () => {
+    const realNow = Date.now
+    try {
+      Date.now = () => 1000
+      upsertCharacter(db, base)
+      expect(getCharacters(db)[0].simc_updated_at).toBe(1000)
+
+      Date.now = () => 2000
+      upsertCharacter(db, { ...base, ilvl: 300 })
+      expect(getCharacters(db)[0].simc_updated_at).toBe(1000)
+
+      Date.now = () => 3000
+      upsertCharacter(db, { ...base, simc_string: 'head=,id=2' })
+      expect(getCharacters(db)[0].simc_updated_at).toBe(3000)
+    } finally {
+      Date.now = realNow
+    }
+  })
+})
+
+describe('sim history', () => {
+  test('records headline numbers per finished sim, filterable by character', () => {
+    insertSimHistory(db, {
+      char_id: 'x-fire', char_name: 'X', spec: 'Fire', difficulty: 'raid-heroic', ended_at: 10,
+      url: 'u', dps_gains: [{ item_id: 1, dps_gain: 100 }, { item_id: 2, dps_gain: 300 }],
+    })
+    insertSimHistory(db, { char_id: 'y-arms', char_name: 'Y', difficulty: 'raid-heroic', ended_at: 20, dps_gains: [] })
+    const xs = getSimHistory(db, 'X')
+    expect(xs).toHaveLength(1)
+    expect(xs[0]).toMatchObject({ upgrades: 2, top_gain: 300, total_gain: 400, top_item_id: 2, url: 'u' })
+    expect(getSimHistory(db)).toHaveLength(2)
+    expect(getSimHistory(db, 'Y')[0]).toMatchObject({ upgrades: 0, top_gain: 0, top_item_id: null })
   })
 })
