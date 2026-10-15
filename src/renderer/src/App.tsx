@@ -8,7 +8,10 @@ import { useSettingsStore } from './stores/useSettingsStore'
 import { useJobStore } from './stores/useJobStore'
 import { useCharacterStore } from './stores/useCharacterStore'
 import { specIdFromName } from './lib/specIcons'
-import type { Character, SimcExportDetected } from '../../../shared/ipc'
+import { lastDifficulties } from './lib/selection'
+import { changedSlots } from './lib/simcDiff'
+import { diffLabel } from './lib/difficulties'
+import type { Character, SimcExportDetected } from '../../shared/ipc'
 import './styles/theme.css'
 
 /** Find the best existing character match for a SimC export entry. */
@@ -29,10 +32,12 @@ export default function App(): JSX.Element {
   const { is_configured, raidsid, wow_path, version, minimizeToTray, fetchSettings } = useSettingsStore()
   const loadHistoricalJobs = useJobStore((s) => s.loadHistoricalJobs)
   const characters = useCharacterStore((s) => s.characters)
+  const storeUpsert = useCharacterStore((s) => s.upsertCharacter)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [overlayMode, setOverlayMode] = useState(false)
   const [updateReady, setUpdateReady] = useState(false)
   const [simcExports, setSimcExports] = useState<SimcExportDetected[]>([])
+  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     fetchSettings()
@@ -54,7 +59,7 @@ export default function App(): JSX.Element {
   async function upsertCharFromSimc(entry: SimcExportDetected, existing: Character | null): Promise<string> {
     const specId = specIdFromName(entry.spec)
     if (existing) {
-      await window.api.upsertCharacter({
+      await storeUpsert({
         ...existing,
         simc_string: entry.simc,
         spec: entry.spec,
@@ -68,7 +73,7 @@ export default function App(): JSX.Element {
     const regionMatch = entry.simc.match(/^region=(\w+)/m)
     const region = regionMatch?.[1] ?? 'eu'
     const charId = `${namePart.toLowerCase()}-${entry.spec.toLowerCase()}`
-    await window.api.upsertCharacter({
+    await storeUpsert({
       id: charId,
       name: namePart,
       realm,
@@ -90,7 +95,13 @@ export default function App(): JSX.Element {
   async function handleSimcRun(entry: SimcExportDetected, existing: Character | null) {
     dismissExport(entry)
     const charId = await upsertCharFromSimc(entry, existing)
-    await window.api.startSim({ character_ids: [charId], difficulties: ['raid-heroic'] })
+    // Same difficulties the user picked last time, not a hardcoded Heroic.
+    try {
+      await useJobStore.getState().startSim({ character_ids: [charId], difficulties: lastDifficulties() })
+    } catch (err: any) {
+      setToast(err?.message ?? 'Failed to start sim')
+      setTimeout(() => setToast(null), 10000)
+    }
   }
 
   async function handleSimcAdd(entry: SimcExportDetected, existing: Character | null) {
@@ -104,7 +115,11 @@ export default function App(): JSX.Element {
       style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}
     >
       <TitleBar onSettingsClick={() => setSettingsOpen(true)} />
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      {/* Leave room for the fixed banners so they never cover the last results. */}
+      <div style={{
+        flex: 1, display: 'flex', overflow: 'hidden',
+        paddingBottom: (simcExports.length + (updateReady ? 1 : 0)) * 36,
+      }}>
         <Sidebar />
         <MainPanel />
       </div>
@@ -145,6 +160,8 @@ export default function App(): JSX.Element {
         const specLabel = entry.spec.charAt(0).toUpperCase() + entry.spec.slice(1)
         const [charName] = entry.charKey.split('-')
         const matched = findMatchingChar(entry, characters)
+        const changed = matched ? changedSlots(matched.simc_string, entry.simc) : []
+        const runDiffs = lastDifficulties().map(diffLabel).join(' + ')
         const updateOffset = updateReady ? 36 : 0
         const bottomOffset = updateOffset + idx * 36
         return (
@@ -161,7 +178,9 @@ export default function App(): JSX.Element {
             {matched ? (
               <span style={{ color: 'var(--text)', flex: 1 }}>
                 {charName} <span style={{ color: 'var(--sub)' }}>({specLabel})</span>
-                {' '}— simc updated. Run a sim?
+                {' '}— {changed.length === 0
+                  ? 'new export, gear unchanged.'
+                  : `${changed.length} slot${changed.length !== 1 ? 's' : ''} changed (${changed.slice(0, 4).join(', ')}${changed.length > 4 ? '…' : ''}). Re-sim?`}
               </span>
             ) : (
               <span style={{ color: 'var(--text)', flex: 1 }}>
@@ -177,7 +196,7 @@ export default function App(): JSX.Element {
                 cursor: 'pointer', fontSize: 11, flexShrink: 0,
               }}
             >
-              {matched ? 'Run' : 'Add & Run'}
+              {matched ? `Run ${runDiffs}` : `Add & Run ${runDiffs}`}
             </button>
             <button
               onClick={() => handleSimcAdd(entry, matched)}
@@ -203,6 +222,16 @@ export default function App(): JSX.Element {
           </div>
         )
       })}
+
+      {toast && (
+        <div role="alert" style={{
+          position: 'fixed', top: 48, left: '50%', transform: 'translateX(-50%)', zIndex: 1001,
+          background: 'var(--surf2)', border: '1px solid var(--red)', color: 'var(--red)',
+          borderRadius: 6, padding: '8px 14px', fontSize: 12, maxWidth: 480,
+        }}>
+          {toast}
+        </div>
+      )}
 
       <OnboardingFlow
         isConfigured={is_configured}

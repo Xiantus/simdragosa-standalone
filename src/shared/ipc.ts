@@ -14,6 +14,8 @@ export interface Character {
   crafted_stats: string
   ilvl?: number
   exclude_from_item_updates?: boolean
+  /** Unix ms when simc_string last changed — results older than this are out of date. */
+  simc_updated_at?: number | null
 }
 
 export interface Settings {
@@ -60,6 +62,10 @@ export interface DpsGain {
   item_name?: string | null
   /** Crafted runs only: the stat combination that simmed best, e.g. "crit/mastery". */
   stats?: string | null
+  /** Boss / zone the item drops from (Raidbots sims only). */
+  zone_name?: string | null
+  /** Gain as a percentage of the character's baseline DPS (Raidbots sims only). */
+  pct?: number | null
 }
 
 export interface StoredResult {
@@ -74,6 +80,8 @@ export interface StoredResult {
   dps_gains?: DpsGain[]
   ended_at?: number
   error_message?: string
+  /** Set when the latest re-run failed; the record itself is the last success. */
+  rerun_error?: string
 }
 
 export interface JobUpdate {
@@ -126,6 +134,33 @@ export interface SimcExportDetected {
   timestamp: number // Unix seconds from the addon
 }
 
+export interface RaidbotsSessionStatus {
+  ok: boolean
+  /** Raidbots account name, when the session is valid and the API reports one. */
+  user?: string | null
+  error?: string
+  /** Set by loginRaidbots: the captured cookie, already saved to settings. */
+  raidsid?: string
+}
+
+export interface LuaWritten {
+  path: string
+  at: number
+}
+
+export interface SimHistoryEntry {
+  char_id: string
+  char_name: string
+  spec: string
+  difficulty: string
+  ended_at: number
+  upgrades: number
+  top_gain: number
+  total_gain: number
+  top_item_id: number | null
+  url: string | null
+}
+
 // The full API exposed on window.api via contextBridge
 export interface ElectronAPI {
   // Renderer → Main (invoke/handle)
@@ -146,6 +181,13 @@ export interface ElectronAPI {
   importQeUrl: (url: string) => Promise<QeImportResult>
   startSim: (selections: SimSelection) => Promise<JobQueued[]>
   cancelJobs: () => Promise<void>
+  cancelJob: (job_id: string) => Promise<boolean>
+  checkRaidbotsSession: (raidsid?: string) => Promise<RaidbotsSessionStatus>
+  loginRaidbots: () => Promise<RaidbotsSessionStatus>
+  getSimHistory: (char_name?: string) => Promise<SimHistoryEntry[]>
+  exportResultsJson: () => Promise<{ ok: boolean; path?: string; error?: string }>
+  browseWowPath: () => Promise<string | null>
+  onLuaWritten: (cb: (info: LuaWritten) => void) => () => void
   exportLua: () => Promise<string>
   installPlaywright: () => Promise<void>
   isPlaywrightInstalled: () => Promise<boolean>

@@ -187,6 +187,9 @@ def _parse_tooltip_data(report_json: dict) -> list[dict]:
                 best[item_id] = {
                     "item_id": item_id,
                     "dps_gain": dps_gain,
+                    # Gain relative to the character's own baseline, so specs
+                    # and characters with very different DPS compare fairly.
+                    "pct": round(dps_gain / base_dps * 100, 2) if base_dps else None,
                     "ilvl": ilvl,
                     "item_name": None,
                     "zone_name": zone_name,

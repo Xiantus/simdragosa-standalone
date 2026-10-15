@@ -19,6 +19,15 @@ const unsubscribe = vi.fn(() => vi.fn())
   // Sim
   startSim: noop,
   cancelJobs: noop,
+  cancelJob: vi.fn().mockResolvedValue(true),
+  checkRaidbotsSession: vi.fn().mockResolvedValue({ ok: false, user: null }),
+  loginRaidbots: vi.fn().mockResolvedValue({ ok: false }),
+  getSimHistory: vi.fn().mockResolvedValue([]),
+  exportResultsJson: vi.fn().mockResolvedValue({ ok: false }),
+  browseWowPath: vi.fn().mockResolvedValue(null),
+  fetchItemNames: vi.fn().mockResolvedValue({}),
+  getJobResults: vi.fn().mockResolvedValue([]),
+  onLuaWritten: unsubscribe,
   exportLua: vi.fn().mockResolvedValue(''),
 
   // Playwright
